@@ -6,12 +6,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CallsScreen() {
-    var showDialpad by remember { mutableStateOf(false) }
+fun CallsScreen(initialPhoneNumber: String? = null) {
+    var showDialpad by remember { mutableStateOf(initialPhoneNumber != null) }
 
     Scaffold(
         floatingActionButton = {
@@ -29,6 +28,7 @@ fun CallsScreen() {
         Box(modifier = Modifier.padding(padding)) {
             if (showDialpad) {
                 DialpadScreen(
+                    initialNumber = initialPhoneNumber ?: "",
                     onNavigateToCallHistory = { showDialpad = false }
                 )
             } else {

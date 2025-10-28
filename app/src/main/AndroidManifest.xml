@@ -66,6 +66,15 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.screens.InCallActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
         <service
             android:name=".phone.YapzyInCallService"
             android:exported="true"

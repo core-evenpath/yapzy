@@ -5,8 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -51,7 +50,10 @@ sealed class BottomNavItem(
 }
 
 @Composable
-fun AppNavigation(navController: NavHostController) {
+fun AppNavigation(
+    navController: NavHostController,
+    initialPhoneNumber: String? = null
+) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     
@@ -120,7 +122,7 @@ fun AppNavigation(navController: NavHostController) {
             modifier = Modifier.padding(padding)
         ) {
             composable(Screen.Calls.route) {
-                CallsScreen()
+                CallsScreen(initialPhoneNumber = initialPhoneNumber)
             }
             
             composable(Screen.Messages.route) {

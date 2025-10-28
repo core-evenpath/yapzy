@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.example.yapzy.navigation.AppNavigation
@@ -20,6 +21,7 @@ import com.example.yapzy.ui.theme.YapzyTheme
 class MainActivity : ComponentActivity() {
 
     private var hasPermissions = false
+    private var initialPhoneNumber: String? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -44,7 +46,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        handleIntent(intent)
+        initialPhoneNumber = handleIntent(intent)
         hasPermissions = PermissionHandler.hasAllPermissions(this)
 
         setContent {
@@ -55,7 +57,10 @@ class MainActivity : ComponentActivity() {
                 ) {
                     if (hasPermissions) {
                         val navController = rememberNavController()
-                        AppNavigation(navController = navController)
+                        AppNavigation(
+                            navController = navController,
+                            initialPhoneNumber = initialPhoneNumber
+                        )
                     } else {
                         PermissionScreen(
                             onRequestPermissions = {
@@ -70,20 +75,25 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleIntent(intent)
+        setIntent(intent)
+        val phoneNumber = handleIntent(intent)
+        if (phoneNumber != null) {
+            initialPhoneNumber = phoneNumber
+            recreate()
+        }
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun handleIntent(intent: Intent?): String? {
         val action = intent?.action
         val data = intent?.data
 
         if (action == Intent.ACTION_DIAL || action == Intent.ACTION_VIEW) {
             data?.let { uri ->
                 if (uri.scheme == "tel") {
-                    val phoneNumber = uri.schemeSpecificPart
-                    intent?.putExtra("phone_number", phoneNumber)
+                    return uri.schemeSpecificPart
                 }
             }
         }
+        return null
     }
 }

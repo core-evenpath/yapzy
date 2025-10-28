@@ -16,9 +16,6 @@ data class Contact(
     val isFavorite: Boolean = false
 )
 
-/**
- * Manager class for accessing and managing device contacts
- */
 class ContactsManager(private val context: Context) {
 
     fun hasContactsPermission(): Boolean {
@@ -28,9 +25,6 @@ class ContactsManager(private val context: Context) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    /**
-     * Retrieve all contacts from the device
-     */
     fun getAllContacts(): List<Contact> {
         if (!hasContactsPermission()) {
             return emptyList()
@@ -82,16 +76,10 @@ class ContactsManager(private val context: Context) {
         return contacts
     }
 
-    /**
-     * Get favorite/starred contacts
-     */
     fun getFavoriteContacts(): List<Contact> {
         return getAllContacts().filter { it.isFavorite }
     }
 
-    /**
-     * Search contacts by name or number
-     */
     fun searchContacts(query: String): List<Contact> {
         return getAllContacts().filter {
             it.name.contains(query, ignoreCase = true) ||
@@ -99,9 +87,6 @@ class ContactsManager(private val context: Context) {
         }
     }
 
-    /**
-     * Get contact by phone number
-     */
     fun getContactByNumber(phoneNumber: String): Contact? {
         if (!hasContactsPermission()) {
             return null
