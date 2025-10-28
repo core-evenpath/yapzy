@@ -23,7 +23,9 @@ class YapzyInCallService : InCallService() {
 
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
-        CallManager.currentCall = null
+        if (CallManager.currentCall == call) {
+            CallManager.currentCall = null
+        }
         CallManager.inCallService = null
     }
 }

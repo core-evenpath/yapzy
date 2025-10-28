@@ -3,7 +3,6 @@ package com.example.yapzy.ui.screens
 import android.content.Context
 import android.os.Bundle
 import android.telecom.Call
-import android.telecom.CallAudioState
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -29,6 +28,7 @@ import kotlinx.coroutines.isActive
 class InCallActivity : ComponentActivity() {
 
     private var call: Call? = null
+    private var callCallback: Call.Callback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,18 +60,21 @@ class InCallActivity : ComponentActivity() {
         }
 
         // Monitor call state
-        call?.registerCallback(object : Call.Callback() {
+        callCallback = object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
                 if (state == Call.STATE_DISCONNECTED) {
                     finish()
                 }
             }
-        })
+        }
+        call?.registerCallback(callCallback!!)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        call?.unregisterCallback(object : Call.Callback() {})
+        callCallback?.let { callback ->
+            call?.unregisterCallback(callback)
+        }
     }
 }
 
