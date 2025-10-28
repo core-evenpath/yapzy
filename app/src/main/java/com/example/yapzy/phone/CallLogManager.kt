@@ -7,9 +7,6 @@ import android.provider.CallLog
 import androidx.core.content.ContextCompat
 import com.example.yapzy.ui.screens.CallLogEntry
 import com.example.yapzy.ui.screens.CallType
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
 
 class CallLogManager(private val context: Context) {
 
@@ -70,18 +67,13 @@ class CallLogManager(private val context: Context) {
 
                     val contactName = cachedName ?: contactsManager.getContactByNumber(number)?.name
 
-                    val dateTime = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(date),
-                        ZoneId.systemDefault()
-                    )
-
                     callLogs.add(
                         CallLogEntry(
                             id = id,
                             phoneNumber = number,
                             contactName = contactName,
                             callType = callType,
-                            timestamp = dateTime,
+                            timestamp = date,
                             duration = duration
                         )
                     )

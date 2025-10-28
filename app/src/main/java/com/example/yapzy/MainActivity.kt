@@ -2,6 +2,7 @@ package com.example.yapzy
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,15 +29,15 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         val allGranted = permissions.values.all { it }
         hasPermissions = allGranted
-        
+
         if (allGranted) {
             Toast.makeText(this, "All permissions granted!", Toast.LENGTH_SHORT).show()
             recreate()
         } else {
-            val deniedPermissions = permissions.filter { !it.value }.keys.toList()
+            val deniedCount = permissions.filter { !it.value }.size
             Toast.makeText(
                 this,
-                "Some permissions were denied: ${deniedPermissions.size} permissions",
+                "Some permissions were denied: $deniedCount permissions",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -44,32 +45,42 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
-        initialPhoneNumber = handleIntent(intent)
-        hasPermissions = PermissionHandler.hasAllPermissions(this)
+        Log.d("MainActivity", "onCreate called")
 
-        setContent {
-            YapzyTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    if (hasPermissions) {
-                        val navController = rememberNavController()
-                        AppNavigation(
-                            navController = navController,
-                            initialPhoneNumber = initialPhoneNumber
-                        )
-                    } else {
-                        PermissionScreen(
-                            onRequestPermissions = {
-                                permissionLauncher.launch(PermissionHandler.ALL_PERMISSIONS)
-                            }
-                        )
+        try {
+            enableEdgeToEdge()
+
+            initialPhoneNumber = handleIntent(intent)
+            hasPermissions = PermissionHandler.hasAllPermissions(this)
+
+            Log.d("MainActivity", "hasPermissions: $hasPermissions")
+
+            setContent {
+                YapzyTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        if (hasPermissions) {
+                            val navController = rememberNavController()
+                            AppNavigation(
+                                navController = navController,
+                                initialPhoneNumber = initialPhoneNumber
+                            )
+                        } else {
+                            PermissionScreen(
+                                onRequestPermissions = {
+                                    permissionLauncher.launch(PermissionHandler.ALL_PERMISSIONS)
+                                }
+                            )
+                        }
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error in onCreate", e)
+            Toast.makeText(this, "Error starting app: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 

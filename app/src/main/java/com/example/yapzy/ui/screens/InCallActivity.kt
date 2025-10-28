@@ -59,7 +59,6 @@ class InCallActivity : ComponentActivity() {
             }
         }
 
-        // Monitor call state
         callCallback = object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
                 if (state == Call.STATE_DISCONNECTED) {
@@ -91,7 +90,6 @@ fun InCallScreen(
     var callDuration by remember { mutableStateOf(0) }
     var callState by remember { mutableStateOf(call.state) }
 
-    // Get caller details
     val phoneNumber = call.details?.handle?.schemeSpecificPart ?: "Unknown"
     val contactsManager = remember { ContactsManager(context) }
     val contact = remember { contactsManager.getContactByNumber(phoneNumber) }
@@ -102,7 +100,6 @@ fun InCallScreen(
         phoneNumber.take(2)
     }
 
-    // Call state text
     val stateText = when (callState) {
         Call.STATE_DIALING -> "Calling..."
         Call.STATE_RINGING -> "Incoming call"
@@ -111,7 +108,6 @@ fun InCallScreen(
         else -> "Connecting..."
     }
 
-    // Timer for active calls
     LaunchedEffect(callState) {
         if (callState == Call.STATE_ACTIVE) {
             while (isActive) {
@@ -121,7 +117,6 @@ fun InCallScreen(
         }
     }
 
-    // Monitor call state changes
     DisposableEffect(call) {
         val callback = object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
@@ -145,13 +140,11 @@ fun InCallScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top section - Caller info
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // Avatar
                 Box(
                     modifier = Modifier
                         .size(120.dp)
@@ -169,7 +162,6 @@ fun InCallScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Caller name
                 Text(
                     text = displayName,
                     fontSize = 32.sp,
@@ -179,7 +171,6 @@ fun InCallScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Call state or duration
                 Text(
                     text = stateText,
                     fontSize = 18.sp,
@@ -196,16 +187,13 @@ fun InCallScreen(
                 }
             }
 
-            // Middle section - Call controls
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // First row of controls
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(32.dp)
                 ) {
-                    // Mute button
                     CallControlButton(
                         icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                         label = "mute",
@@ -216,14 +204,12 @@ fun InCallScreen(
                         }
                     )
 
-                    // Keypad button
                     CallControlButton(
                         icon = Icons.Default.Dialpad,
                         label = "keypad",
-                        onClick = { /* TODO: Show keypad */ }
+                        onClick = { }
                     )
 
-                    // Speaker button
                     CallControlButton(
                         icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeDown,
                         label = "speaker",
@@ -235,36 +221,31 @@ fun InCallScreen(
                     )
                 }
 
-                // Second row of controls
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(32.dp)
                 ) {
-                    // Add call button
                     CallControlButton(
                         icon = Icons.Default.Add,
                         label = "add call",
-                        onClick = { /* TODO: Add call */ }
+                        onClick = { }
                     )
 
-                    // Video call button (placeholder)
                     CallControlButton(
                         icon = Icons.Default.Videocam,
                         label = "FaceTime",
-                        onClick = { /* Not available */ }
+                        onClick = { }
                     )
 
-                    // Contacts button
                     CallControlButton(
                         icon = Icons.Default.Contacts,
                         label = "contacts",
-                        onClick = { /* TODO: Show contacts */ }
+                        onClick = { }
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Bottom section - End call button
             FloatingActionButton(
                 onClick = onEndCall,
                 modifier = Modifier.size(72.dp),

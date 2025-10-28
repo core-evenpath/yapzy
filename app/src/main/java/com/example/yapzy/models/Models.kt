@@ -1,7 +1,7 @@
 package com.example.yapzy.models
 
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.*
 
 // Message priority levels
 enum class Priority {
@@ -24,22 +24,36 @@ data class Message(
     val senderId: String,
     val senderName: String,
     val content: String,
-    val timestamp: LocalDateTime,
+    val timestamp: Long, // Using Long (milliseconds) instead of LocalDateTime
     val isFromUser: Boolean,
     val priority: Priority = Priority.MEDIUM,
     val tone: Tone = Tone.NEUTRAL,
     val intent: Intent = Intent.INFORMATION
 ) {
     fun getFormattedTime(): String {
-        val now = LocalDateTime.now()
+        val now = System.currentTimeMillis()
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timestamp
+
+        val nowCalendar = Calendar.getInstance()
+        nowCalendar.timeInMillis = now
+
         return when {
-            timestamp.toLocalDate() == now.toLocalDate() -> 
-                timestamp.format(DateTimeFormatter.ofPattern("HH:mm"))
-            timestamp.toLocalDate().year == now.year -> 
-                timestamp.format(DateTimeFormatter.ofPattern("MMM dd"))
-            else -> 
-                timestamp.format(DateTimeFormatter.ofPattern("MMM dd, yyyy"))
+            isSameDay(calendar, nowCalendar) -> {
+                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
+            }
+            calendar.get(Calendar.YEAR) == nowCalendar.get(Calendar.YEAR) -> {
+                SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(timestamp))
+            }
+            else -> {
+                SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(timestamp))
+            }
         }
+    }
+
+    private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
+        return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+                cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
     }
 }
 
@@ -75,14 +89,14 @@ data class ContextualInfo(
 
 data class MeetingInfo(
     val title: String,
-    val time: LocalDateTime,
+    val time: Long, // Using Long instead of LocalDateTime
     val location: String?
 )
 
 data class EmailInfo(
     val subject: String,
     val preview: String,
-    val time: LocalDateTime
+    val time: Long // Using Long instead of LocalDateTime
 )
 
 // AI-powered smart reply suggestion

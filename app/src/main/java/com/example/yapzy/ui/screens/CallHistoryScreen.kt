@@ -24,9 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.example.yapzy.phone.CallLogManager
 import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.phone.PhoneManager
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
+import java.text.SimpleDateFormat
+import java.util.*
 
 enum class CallType {
     INCOMING, OUTGOING, MISSED
@@ -41,20 +40,30 @@ data class CallLogEntry(
     val phoneNumber: String,
     val contactName: String?,
     val callType: CallType,
-    val timestamp: LocalDateTime,
+    val timestamp: Long,
     val duration: Int,
     val location: String? = null
 ) {
     fun getFormattedTime(): String {
-        val now = LocalDateTime.now()
-        val daysDiff = ChronoUnit.DAYS.between(timestamp.toLocalDate(), now.toLocalDate())
+        val now = System.currentTimeMillis()
+        val daysDiff = ((now - timestamp) / (1000 * 60 * 60 * 24)).toInt()
 
         return when {
-            daysDiff == 0L -> timestamp.format(DateTimeFormatter.ofPattern("h:mm a"))
-            daysDiff == 1L -> "Yesterday"
-            daysDiff < 7L -> timestamp.format(DateTimeFormatter.ofPattern("EEEE"))
-            timestamp.year == now.year -> timestamp.format(DateTimeFormatter.ofPattern("MMM dd"))
-            else -> timestamp.format(DateTimeFormatter.ofPattern("MMM dd, yyyy"))
+            daysDiff == 0 -> SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timestamp))
+            daysDiff == 1 -> "Yesterday"
+            daysDiff < 7 -> SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(timestamp))
+            else -> {
+                val calendar = Calendar.getInstance()
+                calendar.timeInMillis = timestamp
+                val nowCalendar = Calendar.getInstance()
+                nowCalendar.timeInMillis = now
+
+                if (calendar.get(Calendar.YEAR) == nowCalendar.get(Calendar.YEAR)) {
+                    SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(timestamp))
+                } else {
+                    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(timestamp))
+                }
+            }
         }
     }
 
@@ -78,14 +87,13 @@ data class CallLogEntry(
     }
 
     fun getTimeSection(): String {
-        val now = LocalDateTime.now()
-        val daysDiff = ChronoUnit.DAYS.between(timestamp.toLocalDate(), now.toLocalDate())
+        val daysDiff = ((System.currentTimeMillis() - timestamp) / (1000 * 60 * 60 * 24)).toInt()
 
         return when {
-            daysDiff == 0L -> "Today"
-            daysDiff == 1L -> "Yesterday"
-            daysDiff < 7L -> timestamp.format(DateTimeFormatter.ofPattern("EEEE"))
-            else -> timestamp.format(DateTimeFormatter.ofPattern("MMMM dd"))
+            daysDiff == 0 -> "Today"
+            daysDiff == 1 -> "Yesterday"
+            daysDiff < 7 -> SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(timestamp))
+            else -> SimpleDateFormat("MMMM dd", Locale.getDefault()).format(Date(timestamp))
         }
     }
 }
@@ -112,12 +120,10 @@ fun CallHistoryScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableStateOf(0) }
 
-    // Load real call logs
     val allCalls = remember(refreshTrigger) {
         callLogManager.getCallLogs(limit = 200)
     }
 
-    // Filter calls
     val filteredCalls = remember(selectedFilter, allCalls, searchQuery) {
         var calls = when (selectedFilter) {
             CallFilter.ALL -> allCalls
@@ -137,7 +143,6 @@ fun CallHistoryScreen(
         calls
     }
 
-    // Load favorite contacts
     val favoriteContacts = remember(refreshTrigger) {
         contactsManager.getFavoriteContacts().take(10).map {
             FavoriteContact(
@@ -149,7 +154,6 @@ fun CallHistoryScreen(
         }
     }
 
-    // Group calls by time section
     val groupedCalls = remember(filteredCalls) {
         filteredCalls.groupBy { it.getTimeSection() }
     }
@@ -159,7 +163,6 @@ fun CallHistoryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Search Bar
         SearchBar(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
@@ -170,7 +173,6 @@ fun CallHistoryScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
-        // Filter Tabs
         FilterTabRow(
             selectedFilter = selectedFilter,
             onFilterSelected = { selectedFilter = it }
@@ -182,11 +184,9 @@ fun CallHistoryScreen(
                 .weight(1f)
         ) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
-                // Favorites Section
                 if (selectedFilter == CallFilter.ALL && !isSearchActive && favoriteContacts.isNotEmpty()) {
                     item {
                         FavoritesSection(
@@ -198,7 +198,6 @@ fun CallHistoryScreen(
                     }
                 }
 
-                // Grouped Call History
                 groupedCalls.forEach { (section, calls) ->
                     item {
                         Text(
@@ -219,14 +218,12 @@ fun CallHistoryScreen(
                     }
                 }
 
-                // Empty state
                 if (filteredCalls.isEmpty()) {
                     item {
                         EmptyCallHistoryState(filter = selectedFilter)
                     }
                 }
 
-                // Refresh hint
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
@@ -276,7 +273,6 @@ fun SearchBar(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
         )
     ) {
-        // Content for the search results screen
         Text(
             "Search results...",
             modifier = Modifier.padding(16.dp)
@@ -529,8 +525,6 @@ fun EmptyCallHistoryState(filter: CallFilter) {
         ) {
             Icon(
                 when (filter) {
-                    // *** THIS IS THE FIX ***
-                    // Changed CallType.MISSED to CallFilter.MISSED
                     CallFilter.MISSED -> Icons.Outlined.CallMissed
                     CallFilter.SPAM -> Icons.Outlined.Block
                     else -> Icons.Outlined.Phone

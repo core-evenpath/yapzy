@@ -3,13 +3,9 @@ package com.example.yapzy.phone
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.provider.Telephony
 import androidx.core.content.ContextCompat
 import com.example.yapzy.models.*
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
 
 class SMSManager(private val context: Context) {
 
@@ -73,11 +69,6 @@ class SMSManager(private val context: Context) {
                             address.take(2)
                         }
 
-                        val dateTime = LocalDateTime.ofInstant(
-                            Instant.ofEpochMilli(date),
-                            ZoneId.systemDefault()
-                        )
-
                         val isFromUser = type == Telephony.Sms.MESSAGE_TYPE_SENT
 
                         val message = Message(
@@ -85,7 +76,7 @@ class SMSManager(private val context: Context) {
                             senderId = address,
                             senderName = if (isFromUser) "You" else contactName,
                             content = body,
-                            timestamp = dateTime,
+                            timestamp = date,
                             isFromUser = isFromUser,
                             priority = Priority.MEDIUM,
                             tone = Tone.NEUTRAL,
@@ -143,7 +134,7 @@ class SMSManager(private val context: Context) {
                 ),
                 "${Telephony.Sms.THREAD_ID} = ?",
                 arrayOf(threadId),
-                "${Telephony.Sms.DATE} DESC LIMIT $limit"
+                "${Telephony.Sms.DATE} ASC LIMIT $limit"
             )
 
             cursor?.use {
@@ -163,11 +154,6 @@ class SMSManager(private val context: Context) {
                     val contact = contactsManager.getContactByNumber(address)
                     val contactName = contact?.name ?: address
 
-                    val dateTime = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(date),
-                        ZoneId.systemDefault()
-                    )
-
                     val isFromUser = type == Telephony.Sms.MESSAGE_TYPE_SENT
 
                     messages.add(
@@ -176,7 +162,7 @@ class SMSManager(private val context: Context) {
                             senderId = address,
                             senderName = if (isFromUser) "You" else contactName,
                             content = body,
-                            timestamp = dateTime,
+                            timestamp = date,
                             isFromUser = isFromUser,
                             priority = Priority.MEDIUM,
                             tone = Tone.NEUTRAL,

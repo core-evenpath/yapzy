@@ -1,12 +1,13 @@
 package com.example.yapzy.data
 
 import com.example.yapzy.models.*
-import java.time.LocalDateTime
 
 object SampleData {
-    
-    private val now = LocalDateTime.now()
-    
+
+    private val now = System.currentTimeMillis()
+    private val HOUR = 3600000L
+    private val DAY = 86400000L
+
     val conversations = listOf(
         Conversation(
             id = "1",
@@ -18,7 +19,7 @@ object SampleData {
                     senderId = "sarah_chen",
                     senderName = "Sarah Chen",
                     content = "Hey! Are we still on for the project meeting tomorrow at 2 PM?",
-                    timestamp = now.minusHours(2),
+                    timestamp = now - (2 * HOUR),
                     isFromUser = false,
                     priority = Priority.HIGH,
                     tone = Tone.FRIENDLY,
@@ -30,7 +31,7 @@ object SampleData {
                 senderId = "sarah_chen",
                 senderName = "Sarah Chen",
                 content = "Hey! Are we still on for the project meeting tomorrow at 2 PM?",
-                timestamp = now.minusHours(2),
+                timestamp = now - (2 * HOUR),
                 isFromUser = false,
                 priority = Priority.HIGH,
                 tone = Tone.FRIENDLY,
@@ -48,7 +49,7 @@ object SampleData {
                 upcomingMeetings = listOf(
                     MeetingInfo(
                         title = "Q4 Project Review",
-                        time = now.plusDays(1).withHour(14).withMinute(0),
+                        time = now + DAY,
                         location = "Conference Room B"
                     )
                 ),
@@ -56,13 +57,13 @@ object SampleData {
                     EmailInfo(
                         subject = "Project Timeline Updates",
                         preview = "Attached are the latest updates to our project timeline...",
-                        time = now.minusDays(3)
+                        time = now - (3 * DAY)
                     )
                 ),
                 sharedProjects = listOf("Q4 Marketing Campaign", "Website Redesign")
             )
         ),
-        
+
         Conversation(
             id = "2",
             contactName = "Tech Support",
@@ -73,7 +74,7 @@ object SampleData {
                     senderId = "support",
                     senderName = "Tech Support",
                     content = "Your ticket #12345 has been resolved. The billing issue should now be fixed.",
-                    timestamp = now.minusHours(5),
+                    timestamp = now - (5 * HOUR),
                     isFromUser = false,
                     priority = Priority.MEDIUM,
                     tone = Tone.FORMAL,
@@ -85,7 +86,7 @@ object SampleData {
                 senderId = "support",
                 senderName = "Tech Support",
                 content = "Your ticket #12345 has been resolved. The billing issue should now be fixed.",
-                timestamp = now.minusHours(5),
+                timestamp = now - (5 * HOUR),
                 isFromUser = false,
                 priority = Priority.MEDIUM,
                 tone = Tone.FORMAL,
@@ -99,7 +100,7 @@ object SampleData {
                 "Can you confirm the charges were reversed?"
             )
         ),
-        
+
         Conversation(
             id = "3",
             contactName = "Mom",
@@ -110,7 +111,7 @@ object SampleData {
                     senderId = "mom",
                     senderName = "Mom",
                     content = "Don't forget about dinner this Sunday! Bring your favorite dessert 🍰",
-                    timestamp = now.minusDays(1),
+                    timestamp = now - DAY,
                     isFromUser = false,
                     priority = Priority.LOW,
                     tone = Tone.FRIENDLY,
@@ -122,7 +123,7 @@ object SampleData {
                 senderId = "mom",
                 senderName = "Mom",
                 content = "Don't forget about dinner this Sunday! Bring your favorite dessert 🍰",
-                timestamp = now.minusDays(1),
+                timestamp = now - DAY,
                 isFromUser = false,
                 priority = Priority.LOW,
                 tone = Tone.FRIENDLY,
@@ -134,13 +135,13 @@ object SampleData {
                 upcomingMeetings = listOf(
                     MeetingInfo(
                         title = "Family Dinner",
-                        time = now.plusDays(3).withHour(18).withMinute(0),
+                        time = now + (3 * DAY),
                         location = "Mom's House"
                     )
                 )
             )
         ),
-        
+
         Conversation(
             id = "4",
             contactName = "Project Team",
@@ -151,7 +152,7 @@ object SampleData {
                     senderId = "team",
                     senderName = "Alex",
                     content = "URGENT: Server is down. Need everyone online ASAP!",
-                    timestamp = now.minusMinutes(15),
+                    timestamp = now - (15 * 60000),
                     isFromUser = false,
                     priority = Priority.URGENT,
                     tone = Tone.URGENT,
@@ -163,7 +164,7 @@ object SampleData {
                 senderId = "team",
                 senderName = "Alex",
                 content = "URGENT: Server is down. Need everyone online ASAP!",
-                timestamp = now.minusMinutes(15),
+                timestamp = now - (15 * 60000),
                 isFromUser = false,
                 priority = Priority.URGENT,
                 tone = Tone.URGENT,
@@ -178,7 +179,7 @@ object SampleData {
                 "Checking the logs now. Will update in 5 mins."
             )
         ),
-        
+
         Conversation(
             id = "5",
             contactName = "Jamie Rodriguez",
@@ -189,7 +190,7 @@ object SampleData {
                     senderId = "jamie",
                     senderName = "Jamie Rodriguez",
                     content = "Thanks so much for your help yesterday! Really appreciate it 😊",
-                    timestamp = now.minusHours(20),
+                    timestamp = now - (20 * HOUR),
                     isFromUser = false,
                     priority = Priority.LOW,
                     tone = Tone.FRIENDLY,
@@ -201,7 +202,7 @@ object SampleData {
                 senderId = "jamie",
                 senderName = "Jamie Rodriguez",
                 content = "Thanks so much for your help yesterday! Really appreciate it 😊",
-                timestamp = now.minusHours(20),
+                timestamp = now - (20 * HOUR),
                 isFromUser = false,
                 priority = Priority.LOW,
                 tone = Tone.FRIENDLY,
@@ -216,7 +217,7 @@ object SampleData {
             )
         )
     )
-    
+
     // Sample conversation details with full history
     fun getConversationDetails(conversationId: String): Conversation? {
         return when (conversationId) {
@@ -227,7 +228,7 @@ object SampleData {
                         senderId = "sarah_chen",
                         senderName = "Sarah Chen",
                         content = "Hi! How are you doing?",
-                        timestamp = now.minusDays(2),
+                        timestamp = now - (2 * DAY),
                         isFromUser = false,
                         tone = Tone.FRIENDLY,
                         intent = Intent.GREETING
@@ -237,7 +238,7 @@ object SampleData {
                         senderId = "user",
                         senderName = "You",
                         content = "Hey Sarah! Doing great, thanks. How about you?",
-                        timestamp = now.minusDays(2).plusHours(1),
+                        timestamp = now - (2 * DAY) + HOUR,
                         isFromUser = true,
                         tone = Tone.FRIENDLY,
                         intent = Intent.GREETING
@@ -247,7 +248,7 @@ object SampleData {
                         senderId = "sarah_chen",
                         senderName = "Sarah Chen",
                         content = "Good! Just wanted to touch base about the project. Can we schedule a meeting soon?",
-                        timestamp = now.minusDays(2).plusHours(2),
+                        timestamp = now - (2 * DAY) + (2 * HOUR),
                         isFromUser = false,
                         tone = Tone.CASUAL,
                         intent = Intent.SCHEDULING
@@ -257,7 +258,7 @@ object SampleData {
                         senderId = "user",
                         senderName = "You",
                         content = "Sure! How about tomorrow afternoon?",
-                        timestamp = now.minusDays(2).plusHours(3),
+                        timestamp = now - (2 * DAY) + (3 * HOUR),
                         isFromUser = true,
                         tone = Tone.CASUAL,
                         intent = Intent.SCHEDULING
@@ -267,7 +268,7 @@ object SampleData {
                         senderId = "sarah_chen",
                         senderName = "Sarah Chen",
                         content = "Hey! Are we still on for the project meeting tomorrow at 2 PM?",
-                        timestamp = now.minusHours(2),
+                        timestamp = now - (2 * HOUR),
                         isFromUser = false,
                         priority = Priority.HIGH,
                         tone = Tone.FRIENDLY,
