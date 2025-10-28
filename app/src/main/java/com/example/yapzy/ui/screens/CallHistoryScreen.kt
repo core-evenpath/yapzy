@@ -21,7 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.yapzy.phone.CallLogManager
 import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.phone.PhoneManager
 import java.time.LocalDateTime
@@ -42,7 +42,7 @@ data class CallLogEntry(
     val contactName: String?,
     val callType: CallType,
     val timestamp: LocalDateTime,
-    val duration: Int, // in seconds
+    val duration: Int,
     val location: String? = null
 ) {
     fun getFormattedTime(): String {
@@ -105,28 +105,48 @@ fun CallHistoryScreen(
     val context = LocalContext.current
     val phoneManager = remember { PhoneManager(context) }
     val contactsManager = remember { ContactsManager(context) }
+    val callLogManager = remember { CallLogManager(context) }
 
     var selectedFilter by remember { mutableStateOf(CallFilter.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
 
-    // Sample call history data
-    val allCalls = remember { CallHistoryData.sampleCalls }
+    // Load real call logs
+    val allCalls = remember(refreshTrigger) {
+        callLogManager.getCallLogs(limit = 200)
+    }
 
-    // Filter calls based on selected filter
-    val filteredCalls = remember(selectedFilter, allCalls) {
-        when (selectedFilter) {
+    // Filter calls
+    val filteredCalls = remember(selectedFilter, allCalls, searchQuery) {
+        var calls = when (selectedFilter) {
             CallFilter.ALL -> allCalls
             CallFilter.MISSED -> allCalls.filter { it.callType == CallType.MISSED }
             CallFilter.CONTACTS -> allCalls.filter { it.contactName != null }
-            CallFilter.NON_SPAM -> allCalls // Filter out spam
-            CallFilter.SPAM -> emptyList() // Show spam calls
+            CallFilter.NON_SPAM -> allCalls
+            CallFilter.SPAM -> emptyList()
         }
+
+        if (searchQuery.isNotEmpty()) {
+            calls = calls.filter {
+                it.contactName?.contains(searchQuery, ignoreCase = true) == true ||
+                        it.phoneNumber.contains(searchQuery, ignoreCase = true)
+            }
+        }
+
+        calls
     }
 
-    // Get favorite contacts
-    val favoriteContacts = remember {
-        FavoriteContactsData.favorites
+    // Load favorite contacts
+    val favoriteContacts = remember(refreshTrigger) {
+        contactsManager.getFavoriteContacts().take(10).map {
+            FavoriteContact(
+                id = it.id,
+                name = it.name,
+                initials = it.name.split(" ").mapNotNull { word -> word.firstOrNull() }.take(2).joinToString(""),
+                phoneNumber = it.phoneNumber
+            )
+        }
     }
 
     // Group calls by time section
@@ -156,49 +176,68 @@ fun CallHistoryScreen(
             onFilterSelected = { selectedFilter = it }
         )
 
-        LazyColumn(
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .weight(1f),
-            contentPadding = PaddingValues(bottom = 80.dp)
+                .fillMaxWidth()
+                .weight(1f)
         ) {
-            // Favorites Section (only show in ALL filter)
-            if (selectedFilter == CallFilter.ALL && !isSearchActive) {
-                item {
-                    FavoritesSection(
-                        favorites = favoriteContacts,
-                        onFavoriteClick = { contact ->
-                            phoneManager.makeCall(contact.phoneNumber)
-                        }
-                    )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                // Favorites Section
+                if (selectedFilter == CallFilter.ALL && !isSearchActive && favoriteContacts.isNotEmpty()) {
+                    item {
+                        FavoritesSection(
+                            favorites = favoriteContacts,
+                            onFavoriteClick = { contact ->
+                                phoneManager.makeCall(contact.phoneNumber)
+                            }
+                        )
+                    }
                 }
-            }
 
-            // Grouped Call History
-            groupedCalls.forEach { (section, calls) ->
+                // Grouped Call History
+                groupedCalls.forEach { (section, calls) ->
+                    item {
+                        Text(
+                            text = section,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    items(calls) { call ->
+                        CallHistoryItem(
+                            call = call,
+                            onClick = { onCallClick(call.phoneNumber) },
+                            onCallClick = { phoneManager.makeCall(call.phoneNumber) }
+                        )
+                    }
+                }
+
+                // Empty state
+                if (filteredCalls.isEmpty()) {
+                    item {
+                        EmptyCallHistoryState(filter = selectedFilter)
+                    }
+                }
+
+                // Refresh hint
                 item {
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = section,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "Pull down to refresh",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        textAlign = TextAlign.Center
                     )
-                }
-
-                items(calls) { call ->
-                    CallHistoryItem(
-                        call = call,
-                        onClick = { onCallClick(call.phoneNumber) },
-                        onCallClick = { phoneManager.makeCall(call.phoneNumber) }
-                    )
-                }
-            }
-
-            // Empty state
-            if (filteredCalls.isEmpty()) {
-                item {
-                    EmptyCallHistoryState(filter = selectedFilter)
                 }
             }
         }
@@ -223,17 +262,21 @@ fun SearchBar(
         modifier = modifier,
         placeholder = { Text("Search contacts") },
         leadingIcon = {
-            Icon(Icons.Default.Menu, contentDescription = "Menu")
+            Icon(Icons.Default.Search, contentDescription = "Search")
         },
         trailingIcon = {
-            Icon(Icons.Default.Search, contentDescription = "Search")
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Clear, contentDescription = "Clear")
+                }
+            }
         },
         shape = RoundedCornerShape(28.dp),
         colors = SearchBarDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
         )
     ) {
-        // Search results would go here
+        // Content for the search results screen
         Text(
             "Search results...",
             modifier = Modifier.padding(16.dp)
@@ -251,7 +294,7 @@ fun FilterTabRow(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.primary,
         edgePadding = 16.dp,
-        divider = {} // Remove default divider
+        divider = {}
     ) {
         CallFilter.values().forEach { filter ->
             Tab(
@@ -292,9 +335,6 @@ fun FavoritesSection(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
-            TextButton(onClick = { /* View all favorites */ }) {
-                Text("View all", color = MaterialTheme.colorScheme.primary)
-            }
         }
 
         LazyRow(
@@ -361,7 +401,6 @@ fun CallHistoryItem(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar/Call Type Icon
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -404,10 +443,7 @@ fun CallHistoryItem(
             }
         }
 
-        // Contact info
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = call.contactName ?: call.phoneNumber,
                 style = MaterialTheme.typography.titleMedium,
@@ -443,6 +479,10 @@ fun CallHistoryItem(
                         if (call.location != null) {
                             append(" • ${call.location}")
                         }
+                        val duration = call.getFormattedDuration()
+                        if (duration.isNotEmpty()) {
+                            append(" • $duration")
+                        }
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -450,7 +490,6 @@ fun CallHistoryItem(
             }
         }
 
-        // Time and call action
         Column(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -490,6 +529,8 @@ fun EmptyCallHistoryState(filter: CallFilter) {
         ) {
             Icon(
                 when (filter) {
+                    // *** THIS IS THE FIX ***
+                    // Changed CallType.MISSED to CallFilter.MISSED
                     CallFilter.MISSED -> Icons.Outlined.CallMissed
                     CallFilter.SPAM -> Icons.Outlined.Block
                     else -> Icons.Outlined.Phone
@@ -510,103 +551,4 @@ fun EmptyCallHistoryState(filter: CallFilter) {
             )
         }
     }
-}
-
-object CallHistoryData {
-    private val now = LocalDateTime.now()
-
-    val sampleCalls = listOf(
-        CallLogEntry(
-            id = "1",
-            phoneNumber = "+1 (555) 123-4567",
-            contactName = "Michelle So",
-            callType = CallType.INCOMING,
-            timestamp = now.minusHours(2),
-            duration = 325
-        ),
-        CallLogEntry(
-            id = "2",
-            phoneNumber = "+1 (555) 987-6543",
-            contactName = "Stella Han",
-            callType = CallType.OUTGOING,
-            timestamp = now.minusHours(5),
-            duration = 1842
-        ),
-        CallLogEntry(
-            id = "3",
-            phoneNumber = "(555) 483-5843",
-            contactName = null,
-            callType = CallType.OUTGOING,
-            timestamp = now.minusDays(1).minusHours(5),
-            duration = 420
-        ),
-        CallLogEntry(
-            id = "4",
-            phoneNumber = "+1 (555) 246-8135",
-            contactName = "Monica",
-            callType = CallType.INCOMING,
-            timestamp = now.minusDays(1).minusHours(17).minusMinutes(30),
-            duration = 156
-        ),
-        CallLogEntry(
-            id = "5",
-            phoneNumber = "+1 (800) 123-4567",
-            contactName = "World Shipping",
-            callType = CallType.INCOMING,
-            timestamp = now.minusDays(1).minusHours(16).minusMinutes(30),
-            duration = 2145,
-            location = "San Francisco"
-        ),
-        CallLogEntry(
-            id = "6",
-            phoneNumber = "+1 (555) 321-7654",
-            contactName = null,
-            callType = CallType.MISSED,
-            timestamp = now.minusDays(3),
-            duration = 0
-        ),
-        CallLogEntry(
-            id = "7",
-            phoneNumber = "+1 (555) 111-2222",
-            contactName = "Alex Kim",
-            callType = CallType.OUTGOING,
-            timestamp = now.minusDays(4),
-            duration = 456
-        )
-    )
-}
-
-object FavoriteContactsData {
-    val favorites = listOf(
-        FavoriteContact(
-            id = "1",
-            name = "Alessia",
-            initials = "A",
-            phoneNumber = "+1 (555) 111-1111"
-        ),
-        FavoriteContact(
-            id = "2",
-            name = "Andrew",
-            initials = "A",
-            phoneNumber = "+1 (555) 222-2222"
-        ),
-        FavoriteContact(
-            id = "3",
-            name = "Michelle",
-            initials = "M",
-            phoneNumber = "+1 (555) 333-3333"
-        ),
-        FavoriteContact(
-            id = "4",
-            name = "Ben",
-            initials = "B",
-            phoneNumber = "+1 (555) 444-4444"
-        ),
-        FavoriteContact(
-            id = "5",
-            name = "Takara",
-            initials = "T",
-            phoneNumber = "+1 (555) 555-5555"
-        )
-    )
 }

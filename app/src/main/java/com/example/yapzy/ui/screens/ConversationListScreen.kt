@@ -15,20 +15,42 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.yapzy.data.SampleData
 import com.example.yapzy.models.Conversation
 import com.example.yapzy.models.Priority
+import com.example.yapzy.phone.SMSManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConversationListScreen(
     onConversationClick: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    val smsManager = remember { SMSManager(context) }
+    
     var showAISummaries by remember { mutableStateOf(true) }
-    val conversations = SampleData.conversations
+    var refreshTrigger by remember { mutableStateOf(0) }
+    var searchQuery by remember { mutableStateOf("") }
+    
+    // Load real conversations
+    val conversations = remember(refreshTrigger) {
+        smsManager.getConversations()
+    }
+
+    // Filter conversations based on search
+    val filteredConversations = remember(conversations, searchQuery) {
+        if (searchQuery.isEmpty()) {
+            conversations
+        } else {
+            conversations.filter {
+                it.contactName.contains(searchQuery, ignoreCase = true) ||
+                it.lastMessage.content.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
     
     Scaffold(
         topBar = {
@@ -51,6 +73,9 @@ fun ConversationListScreen(
                     IconButton(onClick = { /* Search */ }) {
                         Icon(Icons.Default.Search, "Search")
                     }
+                    IconButton(onClick = { refreshTrigger++ }) {
+                        Icon(Icons.Default.Refresh, "Refresh")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -72,23 +97,69 @@ fun ConversationListScreen(
                 .padding(padding)
         ) {
             // AI Insights Banner
-            if (showAISummaries) {
+            if (showAISummaries && filteredConversations.isNotEmpty()) {
                 AIInsightsBanner(
-                    unreadCount = conversations.sumOf { it.unreadCount },
-                    urgentCount = conversations.count { it.lastMessage.priority == Priority.URGENT }
+                    unreadCount = filteredConversations.sumOf { it.unreadCount },
+                    urgentCount = filteredConversations.count { it.lastMessage.priority == Priority.URGENT }
                 )
             }
             
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(conversations) { conversation ->
-                    ConversationItem(
-                        conversation = conversation,
-                        showAISummary = showAISummaries,
-                        onClick = { onConversationClick(conversation.id) }
-                    )
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            if (filteredConversations.isEmpty()) {
+                // Empty state
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Message,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = if (searchQuery.isEmpty()) "No messages yet" else "No messages found",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = "Start a new conversation",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(filteredConversations) { conversation ->
+                        ConversationItem(
+                            conversation = conversation,
+                            showAISummary = showAISummaries,
+                            onClick = { onConversationClick(conversation.id) }
+                        )
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    }
+                    
+                    // Refresh hint
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Pull down to refresh",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -278,16 +349,6 @@ fun ConversationItem(
                 
                 // Intent indicator
                 IntentChip(conversation.lastMessage.intent.name)
-                
-                // Meeting indicator
-                if (conversation.contextualInfo?.upcomingMeetings?.isNotEmpty() == true) {
-                    Icon(
-                        Icons.Default.Event,
-                        contentDescription = "Has upcoming meeting",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.tertiary
-                    )
-                }
             }
         }
         

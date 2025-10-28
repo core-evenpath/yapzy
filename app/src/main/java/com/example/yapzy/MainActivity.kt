@@ -1,29 +1,87 @@
 package com.example.yapzy
 
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.example.yapzy.navigation.AppNavigation
+import com.example.yapzy.phone.PermissionHandler
+import com.example.yapzy.ui.screens.PermissionScreen
 import com.example.yapzy.ui.theme.YapzyTheme
 
 class MainActivity : ComponentActivity() {
+
+    private var hasPermissions = false
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        hasPermissions = allGranted
+        
+        if (allGranted) {
+            Toast.makeText(this, "All permissions granted!", Toast.LENGTH_SHORT).show()
+            recreate()
+        } else {
+            val deniedPermissions = permissions.filter { !it.value }.keys.toList()
+            Toast.makeText(
+                this,
+                "Some permissions were denied: ${deniedPermissions.size} permissions",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        handleIntent(intent)
+        hasPermissions = PermissionHandler.hasAllPermissions(this)
+
         setContent {
             YapzyTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val navController = rememberNavController()
-                    AppNavigation(navController = navController)
+                    if (hasPermissions) {
+                        val navController = rememberNavController()
+                        AppNavigation(navController = navController)
+                    } else {
+                        PermissionScreen(
+                            onRequestPermissions = {
+                                permissionLauncher.launch(PermissionHandler.ALL_PERMISSIONS)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val action = intent?.action
+        val data = intent?.data
+
+        if (action == Intent.ACTION_DIAL || action == Intent.ACTION_VIEW) {
+            data?.let { uri ->
+                if (uri.scheme == "tel") {
+                    val phoneNumber = uri.schemeSpecificPart
+                    intent?.putExtra("phone_number", phoneNumber)
                 }
             }
         }

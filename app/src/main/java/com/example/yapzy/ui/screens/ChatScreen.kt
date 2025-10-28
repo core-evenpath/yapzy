@@ -17,13 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.yapzy.data.SampleData
 import com.example.yapzy.models.Message
 import com.example.yapzy.models.Priority
-import com.example.yapzy.models.Tone
+import com.example.yapzy.phone.SMSManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,20 +31,37 @@ fun ChatScreen(
     conversationId: String,
     onBackClick: () -> Unit
 ) {
-    val conversation = remember { SampleData.getConversationDetails(conversationId) }
+    val context = LocalContext.current
+    val smsManager = remember { SMSManager(context) }
+    
     var messageText by remember { mutableStateOf("") }
     var showSmartReplies by remember { mutableStateOf(true) }
-    var showContextPanel by remember { mutableStateOf(false) }
     var showAIAssist by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
 
+    // Load real messages
+    val messages = remember(conversationId, refreshTrigger) {
+        smsManager.getMessagesForContact(conversationId, limit = 200)
+    }
+
+    // Get conversation info
+    val conversations = remember(refreshTrigger) {
+        smsManager.getConversations()
+    }
+    val conversation = conversations.find { it.id == conversationId }
+
     if (conversation == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Conversation not found")
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Loading conversation...")
+            }
         }
         return
     }
@@ -77,13 +93,11 @@ fun ChatScreen(
                                 conversation.contactName,
                                 style = MaterialTheme.typography.titleMedium
                             )
-                            if (conversation.contextualInfo?.upcomingMeetings?.isNotEmpty() == true) {
-                                Text(
-                                    "Meeting in ${conversation.contextualInfo.upcomingMeetings[0].time}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.tertiary
-                                )
-                            }
+                            Text(
+                                "Tap to view contact",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 },
@@ -93,13 +107,8 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showContextPanel = !showContextPanel }) {
-                        Icon(
-                            Icons.Default.Info,
-                            "Context Info",
-                            tint = if (showContextPanel) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface
-                        )
+                    IconButton(onClick = { refreshTrigger++ }) {
+                        Icon(Icons.Default.Refresh, "Refresh")
                     }
                     IconButton(onClick = { showBottomSheet = true }) {
                         Icon(Icons.Default.MoreVert, "More")
@@ -116,28 +125,21 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Context Panel
-            if (showContextPanel) {
-                ContextPanel(
-                    contextInfo = conversation.contextualInfo,
-                    onDismiss = { showContextPanel = false }
-                )
-            }
-
             // Messages
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                reverseLayout = true
             ) {
-                items(conversation.messages) { message ->
+                items(messages.reversed()) { message ->
                     MessageBubble(message)
                 }
             }
 
             // Smart Replies
-            if (showSmartReplies && conversation.suggestedReplies.isNotEmpty()) {
+            if (showSmartReplies && conversation.suggestedReplies.isNotEmpty() && !messages.lastOrNull()?.isFromUser!!) {
                 SmartRepliesSection(
                     replies = conversation.suggestedReplies,
                     onReplyClick = { reply ->
@@ -165,11 +167,16 @@ fun ChatScreen(
                 message = messageText,
                 onMessageChange = { messageText = it },
                 onSendClick = {
-                    // Handle send
-                    messageText = ""
-                    showSmartReplies = false
-                    scope.launch {
-                        listState.animateScrollToItem(conversation.messages.size)
+                    if (messageText.isNotEmpty()) {
+                        val sent = smsManager.sendSMS(conversationId, messageText)
+                        if (sent) {
+                            messageText = ""
+                            showSmartReplies = false
+                            refreshTrigger++
+                            scope.launch {
+                                listState.animateScrollToItem(0)
+                            }
+                        }
                     }
                 },
                 onAIAssistClick = { showAIAssist = !showAIAssist },
@@ -226,7 +233,7 @@ fun MessageBubble(message: Message) {
 
             Spacer(Modifier.height(4.dp))
 
-            // Message metadata (AI analysis)
+            // Message metadata
             if (!message.isFromUser) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -402,7 +409,6 @@ fun AIAssistPanel(
 
             Spacer(Modifier.height(8.dp))
 
-            // Tone analysis
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -419,7 +425,6 @@ fun AIAssistPanel(
 
             Spacer(Modifier.height(12.dp))
 
-            // Suggestions
             Text(
                 "Suggestions:",
                 style = MaterialTheme.typography.labelMedium,
@@ -430,7 +435,7 @@ fun AIAssistPanel(
 
             SuggestionOption(
                 title = "More Professional",
-                text = "Thank you for your inquiry. I would be pleased to assist you with this matter.",
+                text = "Thank you for reaching out. I would be happy to help with that.",
                 onClick = { onSuggestionClick(it) }
             )
 
@@ -438,7 +443,7 @@ fun AIAssistPanel(
 
             SuggestionOption(
                 title = "Friendlier",
-                text = "Hey! Thanks for reaching out! I'd love to help you with that 😊",
+                text = "Hey! Thanks for the message! I'd love to help with that 😊",
                 onClick = { onSuggestionClick(it) }
             )
 
@@ -446,7 +451,7 @@ fun AIAssistPanel(
 
             SuggestionOption(
                 title = "More Concise",
-                text = "Happy to help with this!",
+                text = "Happy to help!",
                 onClick = { onSuggestionClick(it) }
             )
         }
@@ -539,17 +544,7 @@ fun MessageInputBar(
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Type a message...") },
                 shape = RoundedCornerShape(24.dp),
-                maxLines = 4,
-                trailingIcon = {
-                    Row {
-                        IconButton(onClick = { /* Attach */ }) {
-                            Icon(Icons.Default.AttachFile, "Attach")
-                        }
-                        IconButton(onClick = { /* Voice */ }) {
-                            Icon(Icons.Default.Mic, "Voice")
-                        }
-                    }
-                }
+                maxLines = 4
             )
 
             FloatingActionButton(
@@ -564,125 +559,6 @@ fun MessageInputBar(
                 )
             }
         }
-    }
-}
-
-@Composable
-fun ContextPanel(
-    contextInfo: com.example.yapzy.models.ContextualInfo?,
-    onDismiss: () -> Unit
-) {
-    if (contextInfo == null) return
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Context & Insights",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, "Close", modifier = Modifier.size(18.dp))
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // Upcoming meetings
-            if (contextInfo.upcomingMeetings.isNotEmpty()) {
-                ContextSection(
-                    icon = Icons.Default.Event,
-                    title = "Upcoming Meetings",
-                    color = MaterialTheme.colorScheme.tertiary
-                ) {
-                    contextInfo.upcomingMeetings.forEach { meeting ->
-                        Text(
-                            "• ${meeting.title} - ${meeting.time}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            // Related emails
-            if (contextInfo.relatedEmails.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                ContextSection(
-                    icon = Icons.Default.Email,
-                    title = "Recent Emails",
-                    color = MaterialTheme.colorScheme.secondary
-                ) {
-                    contextInfo.relatedEmails.forEach { email ->
-                        Text(
-                            "• ${email.subject}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            email.preview,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Shared projects
-            if (contextInfo.sharedProjects.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                ContextSection(
-                    icon = Icons.Default.Folder,
-                    title = "Shared Projects",
-                    color = MaterialTheme.colorScheme.primary
-                ) {
-                    Text(
-                        contextInfo.sharedProjects.joinToString(", "),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ContextSection(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    color: Color,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        content()
     }
 }
 
@@ -713,15 +589,9 @@ fun ChatOptionsSheet(onDismiss: () -> Unit) {
         )
 
         OptionItem(
-            icon = Icons.Default.Announcement,
-            title = "Draft Announcement",
-            description = "Create a message for multiple recipients"
-        )
-
-        OptionItem(
-            icon = Icons.Default.Analytics,
-            title = "Conversation Insights",
-            description = "View tone, sentiment, and engagement analysis"
+            icon = Icons.Default.Block,
+            title = "Block Contact",
+            description = "Stop receiving messages from this contact"
         )
 
         Spacer(Modifier.height(32.dp))
