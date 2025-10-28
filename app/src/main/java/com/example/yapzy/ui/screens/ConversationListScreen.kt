@@ -30,32 +30,43 @@ fun ConversationListScreen(
 ) {
     val context = LocalContext.current
     val smsManager = remember { SMSManager(context) }
-    
+
     var showAISummaries by remember { mutableStateOf(true) }
     var refreshTrigger by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    
-    // Load real conversations
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Load real conversations with error handling
     val conversations = remember(refreshTrigger) {
-        smsManager.getConversations()
+        try {
+            smsManager.getConversations()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
     }
 
     // Filter conversations based on search
     val filteredConversations = remember(conversations, searchQuery) {
-        if (searchQuery.isEmpty()) {
-            conversations
-        } else {
-            conversations.filter {
-                it.contactName.contains(searchQuery, ignoreCase = true) ||
-                it.lastMessage.content.contains(searchQuery, ignoreCase = true)
+        try {
+            if (searchQuery.isEmpty()) {
+                conversations
+            } else {
+                conversations.filter {
+                    it.contactName.contains(searchQuery, ignoreCase = true) ||
+                            it.lastMessage.content.contains(searchQuery, ignoreCase = true)
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
     }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
                     Text(
                         "Messages",
                         style = MaterialTheme.typography.headlineMedium,
@@ -73,7 +84,11 @@ fun ConversationListScreen(
                     IconButton(onClick = { /* Search */ }) {
                         Icon(Icons.Default.Search, "Search")
                     }
-                    IconButton(onClick = { refreshTrigger++ }) {
+                    IconButton(onClick = {
+                        isLoading = true
+                        refreshTrigger++
+                        isLoading = false
+                    }) {
                         Icon(Icons.Default.Refresh, "Refresh")
                     }
                 },
@@ -98,13 +113,31 @@ fun ConversationListScreen(
         ) {
             // AI Insights Banner
             if (showAISummaries && filteredConversations.isNotEmpty()) {
+                val unreadCount = try {
+                    filteredConversations.sumOf { it.unreadCount }
+                } catch (e: Exception) {
+                    0
+                }
+                val urgentCount = try {
+                    filteredConversations.count { it.lastMessage.priority == Priority.URGENT }
+                } catch (e: Exception) {
+                    0
+                }
+
                 AIInsightsBanner(
-                    unreadCount = filteredConversations.sumOf { it.unreadCount },
-                    urgentCount = filteredConversations.count { it.lastMessage.priority == Priority.URGENT }
+                    unreadCount = unreadCount,
+                    urgentCount = urgentCount
                 )
             }
-            
-            if (filteredConversations.isEmpty()) {
+
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (filteredConversations.isEmpty()) {
                 // Empty state
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -138,27 +171,19 @@ fun ConversationListScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredConversations) { conversation ->
+                    items(filteredConversations, key = { it.id }) { conversation ->
                         ConversationItem(
                             conversation = conversation,
                             showAISummary = showAISummaries,
-                            onClick = { onConversationClick(conversation.id) }
+                            onClick = {
+                                try {
+                                    onConversationClick(conversation.id)
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    }
-                    
-                    // Refresh hint
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Pull down to refresh",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
                     }
                 }
             }
@@ -245,7 +270,7 @@ fun ConversationItem(
                     fontWeight = FontWeight.Bold
                 )
             }
-            
+
             // Priority badge
             if (conversation.lastMessage.priority == Priority.URGENT) {
                 Box(
@@ -265,7 +290,7 @@ fun ConversationItem(
                 )
             }
         }
-        
+
         // Message content
         Column(
             modifier = Modifier.weight(1f)
@@ -294,15 +319,19 @@ fun ConversationItem(
                         )
                     }
                     Text(
-                        text = conversation.lastMessage.getFormattedTime(),
+                        text = try {
+                            conversation.lastMessage.getFormattedTime()
+                        } catch (e: Exception) {
+                            ""
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            
+
             Spacer(Modifier.height(4.dp))
-            
+
             // AI Summary or message preview
             if (showAISummary && conversation.aiSummary != null) {
                 Row(
@@ -325,20 +354,24 @@ fun ConversationItem(
                 }
             } else {
                 Text(
-                    text = conversation.getPreviewText(),
+                    text = try {
+                        conversation.getPreviewText()
+                    } catch (e: Exception) {
+                        "Message preview unavailable"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (conversation.unreadCount > 0) 
-                        MaterialTheme.colorScheme.onSurface 
-                    else 
+                    color = if (conversation.unreadCount > 0)
+                        MaterialTheme.colorScheme.onSurface
+                    else
                         MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = if (conversation.unreadCount > 0) FontWeight.Medium else FontWeight.Normal
                 )
             }
-            
+
             Spacer(Modifier.height(4.dp))
-            
+
             // Contextual indicators
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -346,12 +379,12 @@ fun ConversationItem(
             ) {
                 // Tone indicator
                 ToneChip(conversation.lastMessage.tone.name)
-                
+
                 // Intent indicator
                 IntentChip(conversation.lastMessage.intent.name)
             }
         }
-        
+
         // Unread badge
         if (conversation.unreadCount > 0) {
             Badge(
@@ -400,7 +433,7 @@ fun IntentChip(intent: String) {
         "URGENT" -> Icons.Default.Warning
         else -> Icons.Default.Info
     }
-    
+
     Icon(
         icon,
         contentDescription = intent,

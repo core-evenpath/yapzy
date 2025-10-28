@@ -33,7 +33,7 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val smsManager = remember { SMSManager(context) }
-    
+
     var messageText by remember { mutableStateOf("") }
     var showSmartReplies by remember { mutableStateOf(true) }
     var showAIAssist by remember { mutableStateOf(false) }
@@ -43,24 +43,49 @@ fun ChatScreen(
 
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
 
-    // Load real messages
+    // Load real messages with error handling
     val messages = remember(conversationId, refreshTrigger) {
-        smsManager.getMessagesForContact(conversationId, limit = 200)
+        try {
+            smsManager.getMessagesForContact(conversationId, limit = 200)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
     }
 
-    // Get conversation info
+    // Get conversation info with error handling
     val conversations = remember(refreshTrigger) {
-        smsManager.getConversations()
+        try {
+            smsManager.getConversations()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
     }
     val conversation = conversations.find { it.id == conversationId }
 
-    if (conversation == null) {
+    if (conversation == null && !isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Loading conversation...")
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Icon(
+                    Icons.Default.Error,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    "Conversation not found",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Button(onClick = onBackClick) {
+                    Text("Go Back")
+                }
             }
         }
         return
@@ -82,7 +107,7 @@ fun ChatScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                conversation.contactAvatar,
+                                conversation?.contactAvatar ?: "??",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -90,7 +115,7 @@ fun ChatScreen(
                         }
                         Column {
                             Text(
-                                conversation.contactName,
+                                conversation?.contactName ?: "Unknown",
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Text(
@@ -107,7 +132,11 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { refreshTrigger++ }) {
+                    IconButton(onClick = {
+                        isLoading = true
+                        refreshTrigger++
+                        isLoading = false
+                    }) {
                         Icon(Icons.Default.Refresh, "Refresh")
                     }
                     IconButton(onClick = { showBottomSheet = true }) {
@@ -125,63 +154,95 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Messages
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                reverseLayout = true
-            ) {
-                items(messages.reversed()) { message ->
-                    MessageBubble(message)
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
-            }
+            } else {
+                // Messages
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    reverseLayout = true
+                ) {
+                    items(messages.reversed(), key = { it.id }) { message ->
+                        MessageBubble(message)
+                    }
 
-            // Smart Replies
-            if (showSmartReplies && conversation.suggestedReplies.isNotEmpty() && !messages.lastOrNull()?.isFromUser!!) {
-                SmartRepliesSection(
-                    replies = conversation.suggestedReplies,
-                    onReplyClick = { reply ->
-                        messageText = reply
-                        showSmartReplies = false
-                    },
-                    onDismiss = { showSmartReplies = false }
-                )
-            }
-
-            // AI Writing Assistant
-            if (showAIAssist && messageText.isNotEmpty()) {
-                AIAssistPanel(
-                    originalText = messageText,
-                    onSuggestionClick = { suggestion ->
-                        messageText = suggestion
-                        showAIAssist = false
-                    },
-                    onDismiss = { showAIAssist = false }
-                )
-            }
-
-            // Message Input
-            MessageInputBar(
-                message = messageText,
-                onMessageChange = { messageText = it },
-                onSendClick = {
-                    if (messageText.isNotEmpty()) {
-                        val sent = smsManager.sendSMS(conversationId, messageText)
-                        if (sent) {
-                            messageText = ""
-                            showSmartReplies = false
-                            refreshTrigger++
-                            scope.launch {
-                                listState.animateScrollToItem(0)
+                    if (messages.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No messages yet",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
-                },
-                onAIAssistClick = { showAIAssist = !showAIAssist },
-                aiAssistActive = showAIAssist
-            )
+                }
+
+                // Smart Replies
+                if (showSmartReplies &&
+                    conversation?.suggestedReplies?.isNotEmpty() == true &&
+                    messages.lastOrNull()?.isFromUser == false) {
+                    SmartRepliesSection(
+                        replies = conversation.suggestedReplies,
+                        onReplyClick = { reply ->
+                            messageText = reply
+                            showSmartReplies = false
+                        },
+                        onDismiss = { showSmartReplies = false }
+                    )
+                }
+
+                // AI Writing Assistant
+                if (showAIAssist && messageText.isNotEmpty()) {
+                    AIAssistPanel(
+                        originalText = messageText,
+                        onSuggestionClick = { suggestion ->
+                            messageText = suggestion
+                            showAIAssist = false
+                        },
+                        onDismiss = { showAIAssist = false }
+                    )
+                }
+
+                // Message Input
+                MessageInputBar(
+                    message = messageText,
+                    onMessageChange = { messageText = it },
+                    onSendClick = {
+                        if (messageText.isNotEmpty()) {
+                            try {
+                                val sent = smsManager.sendSMS(conversationId, messageText)
+                                if (sent) {
+                                    messageText = ""
+                                    showSmartReplies = false
+                                    refreshTrigger++
+                                    scope.launch {
+                                        listState.animateScrollToItem(0)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    },
+                    onAIAssistClick = { showAIAssist = !showAIAssist },
+                    aiAssistActive = showAIAssist
+                )
+            }
         }
     }
 
@@ -240,7 +301,11 @@ fun MessageBubble(message: Message) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        message.getFormattedTime(),
+                        try {
+                            message.getFormattedTime()
+                        } catch (e: Exception) {
+                            ""
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -275,7 +340,11 @@ fun MessageBubble(message: Message) {
                 }
             } else {
                 Text(
-                    message.getFormattedTime(),
+                    try {
+                        message.getFormattedTime()
+                    } catch (e: Exception) {
+                        ""
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -407,31 +476,7 @@ fun AIAssistPanel(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Detected tone:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
-                )
-                Badge {
-                    Text("CASUAL", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-
             Spacer(Modifier.height(12.dp))
-
-            Text(
-                "Suggestions:",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(Modifier.height(8.dp))
 
             SuggestionOption(
                 title = "More Professional",

@@ -1,42 +1,66 @@
 package com.example.yapzy.ui.screens
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CallsScreen(initialPhoneNumber: String? = null) {
     var showDialpad by remember { mutableStateOf(initialPhoneNumber != null) }
+    var phoneNumberForDialpad by remember { mutableStateOf(initialPhoneNumber ?: "") }
 
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showDialpad = !showDialpad },
-                containerColor = MaterialTheme.colorScheme.primary
+                onClick = {
+                    showDialpad = !showDialpad
+                    if (showDialpad) {
+                        phoneNumberForDialpad = ""
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp
+                )
             ) {
                 Icon(
-                    if (showDialpad) Icons.Default.Close else Icons.Default.Dialpad,
-                    contentDescription = if (showDialpad) "Close Dialpad" else "Open Dialpad"
+                    imageVector = if (showDialpad) Icons.Default.History else Icons.Default.Dialpad,
+                    contentDescription = if (showDialpad) "Show Call History" else "Open Dialpad"
                 )
             }
-        }
+        },
+        floatingActionButtonPosition = FabPosition.End
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
-            if (showDialpad) {
-                DialpadScreen(
-                    initialNumber = initialPhoneNumber ?: "",
-                    onNavigateToCallHistory = { showDialpad = false }
-                )
-            } else {
-                CallHistoryScreen(
-                    onCallClick = { phoneNumber ->
-                        // Handle call
-                    }
-                )
+            AnimatedContent(
+                targetState = showDialpad,
+                transitionSpec = {
+                    fadeIn() + slideInHorizontally() togetherWith
+                            fadeOut() + slideOutHorizontally()
+                },
+                label = "CallScreenTransition"
+            ) { isDialpadShown ->
+                if (isDialpadShown) {
+                    DialpadScreen(
+                        initialNumber = phoneNumberForDialpad,
+                        onNavigateToCallHistory = {
+                            showDialpad = false
+                        }
+                    )
+                } else {
+                    CallHistoryScreen(
+                        onCallClick = { phoneNumber ->
+                            phoneNumberForDialpad = phoneNumber
+                            showDialpad = true
+                        }
+                    )
+                }
             }
         }
     }

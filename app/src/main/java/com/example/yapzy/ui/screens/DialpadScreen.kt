@@ -2,6 +2,7 @@ package com.example.yapzy.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -12,7 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,10 +29,12 @@ fun DialpadScreen(
     var phoneNumber by remember { mutableStateOf(initialNumber) }
     val context = LocalContext.current
     val phoneManager = remember { PhoneManager(context) }
+    val haptic = LocalHapticFeedback.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -37,7 +42,7 @@ fun DialpadScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(80.dp)
+                .height(100.dp)
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -45,10 +50,11 @@ fun DialpadScreen(
                 text = if (phoneNumber.isEmpty()) "Enter number" else phoneNumber,
                 style = MaterialTheme.typography.headlineLarge,
                 fontSize = 32.sp,
-                color = if (phoneNumber.isEmpty()) 
-                    MaterialTheme.colorScheme.onSurfaceVariant 
-                else 
-                    MaterialTheme.colorScheme.onSurface
+                color = if (phoneNumber.isEmpty())
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                else
+                    MaterialTheme.colorScheme.onSurface,
+                maxLines = 2
             )
         }
 
@@ -65,9 +71,30 @@ fun DialpadScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                DialpadButton("1", "", onDigitClick = { phoneNumber += "1" })
-                DialpadButton("2", "ABC", onDigitClick = { phoneNumber += "2" })
-                DialpadButton("3", "DEF", onDigitClick = { phoneNumber += "3" })
+                DialpadButton(
+                    number = "1",
+                    letters = "",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "1"
+                    }
+                )
+                DialpadButton(
+                    number = "2",
+                    letters = "ABC",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "2"
+                    }
+                )
+                DialpadButton(
+                    number = "3",
+                    letters = "DEF",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "3"
+                    }
+                )
             }
 
             // Row 2: 4, 5, 6
@@ -75,9 +102,30 @@ fun DialpadScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                DialpadButton("4", "GHI", onDigitClick = { phoneNumber += "4" })
-                DialpadButton("5", "JKL", onDigitClick = { phoneNumber += "5" })
-                DialpadButton("6", "MNO", onDigitClick = { phoneNumber += "6" })
+                DialpadButton(
+                    number = "4",
+                    letters = "GHI",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "4"
+                    }
+                )
+                DialpadButton(
+                    number = "5",
+                    letters = "JKL",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "5"
+                    }
+                )
+                DialpadButton(
+                    number = "6",
+                    letters = "MNO",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "6"
+                    }
+                )
             }
 
             // Row 3: 7, 8, 9
@@ -85,9 +133,30 @@ fun DialpadScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                DialpadButton("7", "PQRS", onDigitClick = { phoneNumber += "7" })
-                DialpadButton("8", "TUV", onDigitClick = { phoneNumber += "8" })
-                DialpadButton("9", "WXYZ", onDigitClick = { phoneNumber += "9" })
+                DialpadButton(
+                    number = "7",
+                    letters = "PQRS",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "7"
+                    }
+                )
+                DialpadButton(
+                    number = "8",
+                    letters = "TUV",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "8"
+                    }
+                )
+                DialpadButton(
+                    number = "9",
+                    letters = "WXYZ",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "9"
+                    }
+                )
             }
 
             // Row 4: *, 0, #
@@ -95,14 +164,34 @@ fun DialpadScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                DialpadButton("*", "", onDigitClick = { phoneNumber += "*" })
                 DialpadButton(
-                    "0", 
-                    "+", 
-                    onDigitClick = { phoneNumber += "0" },
-                    onLongClick = { phoneNumber += "+" }
+                    number = "*",
+                    letters = "",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "*"
+                    }
                 )
-                DialpadButton("#", "", onDigitClick = { phoneNumber += "#" })
+                DialpadButton(
+                    number = "0",
+                    letters = "+",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "0"
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        phoneNumber += "+"
+                    }
+                )
+                DialpadButton(
+                    number = "#",
+                    letters = "",
+                    onDigitClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        phoneNumber += "#"
+                    }
+                )
             }
         }
 
@@ -117,17 +206,22 @@ fun DialpadScreen(
             // Backspace button
             IconButton(
                 onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     if (phoneNumber.isNotEmpty()) {
                         phoneNumber = phoneNumber.dropLast(1)
                     }
                 },
-                modifier = Modifier.size(64.dp)
+                modifier = Modifier.size(64.dp),
+                enabled = phoneNumber.isNotEmpty()
             ) {
                 Icon(
                     Icons.Default.Backspace,
                     contentDescription = "Backspace",
                     modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = if (phoneNumber.isNotEmpty())
+                        MaterialTheme.colorScheme.onSurface
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                 )
             }
 
@@ -135,13 +229,18 @@ fun DialpadScreen(
             FloatingActionButton(
                 onClick = {
                     if (phoneNumber.isNotEmpty()) {
-                        phoneManager.makeCall(phoneNumber)
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        try {
+                            phoneManager.makeCall(phoneNumber)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
                 },
                 modifier = Modifier.size(72.dp),
-                containerColor = if (phoneNumber.isEmpty()) 
+                containerColor = if (phoneNumber.isEmpty())
                     MaterialTheme.colorScheme.surfaceVariant
-                else 
+                else
                     Color(0xFF4CAF50),
                 contentColor = Color.White
             ) {
@@ -152,14 +251,14 @@ fun DialpadScreen(
                 )
             }
 
-            // Contact button placeholder
+            // Add contact button
             IconButton(
                 onClick = { /* TODO: Open contacts */ },
                 modifier = Modifier.size(64.dp)
             ) {
                 Icon(
-                    Icons.Default.Contacts,
-                    contentDescription = "Contacts",
+                    Icons.Default.PersonAdd,
+                    contentDescription = "Add Contact",
                     modifier = Modifier.size(32.dp),
                     tint = MaterialTheme.colorScheme.onSurface
                 )
@@ -177,23 +276,21 @@ fun DialpadButton(
     onDigitClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
-    var isPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = Modifier
             .size(80.dp)
             .clip(CircleShape)
-            .background(
-                if (isPressed)
-                    MaterialTheme.colorScheme.primaryContainer
-                else
-                    MaterialTheme.colorScheme.surfaceVariant
-            )
-            .clickable {
-                isPressed = true
-                onDigitClick()
-                isPressed = false
-            },
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material.ripple.rememberRipple(
+                    bounded = true,
+                    color = MaterialTheme.colorScheme.primary
+                ),
+                onClick = onDigitClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Column(
