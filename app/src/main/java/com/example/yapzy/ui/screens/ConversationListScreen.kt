@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -22,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.yapzy.data.MessageCache
 import com.example.yapzy.models.Conversation
 import com.example.yapzy.phone.SMSManager
@@ -60,8 +63,11 @@ fun ConversationListScreen(
 
             // Refresh from source in background
             isRefreshing = true
-            loadConversations(smsManager, messageCache) { result, error ->
-                conversations = result
+            loadConversations(
+                smsManager = smsManager,
+                messageCache = messageCache
+            ) { loadedConversations, error ->
+                conversations = loadedConversations
                 errorMessage = error
                 isLoading = false
                 isRefreshing = false
@@ -69,7 +75,6 @@ fun ConversationListScreen(
         }
     }
 
-    // Filter conversations based on search
     val filteredConversations = remember(conversations, searchQuery) {
         if (searchQuery.isEmpty()) {
             conversations
@@ -84,29 +89,17 @@ fun ConversationListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Messages",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Messages") },
                 actions = {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(12.dp)
-                                .size(24.dp),
-                            strokeWidth = 2.dp
-                        )
-                    }
                     IconButton(
                         onClick = {
-                            isRefreshing = true
-                            errorMessage = null
                             scope.launch {
-                                loadConversations(smsManager, messageCache) { result, error ->
-                                    conversations = result
+                                isRefreshing = true
+                                loadConversations(
+                                    smsManager = smsManager,
+                                    messageCache = messageCache
+                                ) { loadedConversations, error ->
+                                    conversations = loadedConversations
                                     errorMessage = error
                                     isRefreshing = false
                                 }
@@ -278,6 +271,8 @@ fun ConversationItem(
     conversation: Conversation,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -285,7 +280,7 @@ fun ConversationItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Avatar
+        // Avatar with photo loading support
         Box(
             modifier = Modifier
                 .size(56.dp)
@@ -293,12 +288,50 @@ fun ConversationItem(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = conversation.contactAvatar,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.Bold
-            )
+            if (conversation.photoUri != null && conversation.photoUri.isNotEmpty()) {
+                // Load actual contact photo
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(conversation.photoUri)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Contact photo for ${conversation.contactName}",
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        // Show loading indicator while image loads
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    },
+                    error = {
+                        // Show initials if image fails to load
+                        Text(
+                            text = conversation.contactAvatar,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                )
+            } else {
+                // Show initials when no photo available
+                Text(
+                    text = conversation.contactAvatar,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         // Message content

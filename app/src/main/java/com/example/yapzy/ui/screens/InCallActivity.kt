@@ -36,7 +36,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.yapzy.phone.CallManager
@@ -103,7 +102,7 @@ class InCallActivity : ComponentActivity() {
                     call = call!!,
                     context = this,
                     onAcceptCall = {
-                        call?.answer(0) // 0 = AUDIO
+                        call?.answer(0)
                     },
                     onDeclineCall = {
                         call?.reject(false, null)
@@ -112,7 +111,6 @@ class InCallActivity : ComponentActivity() {
                     },
                     onEndCall = {
                         call?.disconnect()
-                        showPostCallScreen(declined = false)
                         finish()
                     },
                     onMuteToggle = { muted ->
@@ -122,11 +120,7 @@ class InCallActivity : ComponentActivity() {
                         CallManager.setSpeaker(speaker)
                     },
                     onOpenContacts = {
-                        try {
-                            contactPickerLauncher.launch(null)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                        contactPickerLauncher.launch(null)
                     },
                     onDurationUpdate = { duration ->
                         callDuration = duration
@@ -135,14 +129,17 @@ class InCallActivity : ComponentActivity() {
             }
         }
 
+        // Listen for call state changes
         callCallback = object : Call.Callback() {
             override fun onStateChanged(call: Call, state: Int) {
-                if (state == Call.STATE_DISCONNECTED) {
-                    showPostCallScreen(declined = false)
-                    finish()
+                when (state) {
+                    Call.STATE_DISCONNECTED -> {
+                        finish()
+                    }
                 }
             }
         }
+
         call?.registerCallback(callCallback!!)
     }
 
@@ -324,112 +321,176 @@ fun InCallScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // Contact name
                 Text(
                     text = displayName,
-                    fontSize = 34.sp,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 2
+                    color = Color.White
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Call status
+                // Call state/duration
                 Text(
                     text = stateText,
-                    fontSize = 20.sp,
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontWeight = FontWeight.Normal
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.9f)
                 )
+            }
 
-                // Phone number if not in contacts
-                if (contact == null && phoneNumber != "Unknown") {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.White.copy(alpha = 0.15f)
+            Spacer(modifier = Modifier.weight(0.5f))
+
+            // Bottom controls
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Control buttons (mute, speaker, etc.) - only for active calls
+                if (!isIncoming) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.padding(horizontal = 24.dp)
                     ) {
-                        Text(
-                            text = phoneNumber,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            fontSize = 16.sp,
-                            color = Color.White.copy(alpha = 0.8f)
+                        // Mute button
+                        CallControlButton(
+                            icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                            label = "Mute",
+                            isActive = isMuted,
+                            onClick = {
+                                isMuted = !isMuted
+                                onMuteToggle(isMuted)
+                            }
+                        )
+
+                        // Dialpad button
+                        CallControlButton(
+                            icon = Icons.Default.Dialpad,
+                            label = "Dialpad",
+                            onClick = { showDialpad = true }
+                        )
+
+                        // Speaker button
+                        CallControlButton(
+                            icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeDown,
+                            label = "Speaker",
+                            isActive = isSpeaker,
+                            onClick = {
+                                isSpeaker = !isSpeaker
+                                onSpeakerToggle(isSpeaker)
+                            }
+                        )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    ) {
+                        // Video button (disabled for now)
+                        CallControlButton(
+                            icon = Icons.Default.Videocam,
+                            label = "Video",
+                            onClick = { showVideoNotSupported = true }
+                        )
+
+                        // Add call button
+                        CallControlButton(
+                            icon = Icons.Default.PersonAdd,
+                            label = "Add",
+                            onClick = { showAddCallDialog = true }
+                        )
+
+                        // Message button
+                        CallControlButton(
+                            icon = Icons.AutoMirrored.Filled.Message,
+                            label = "Message",
+                            onClick = { showMessageDialog = true }
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.weight(0.7f))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Bottom section - Controls
-            if (isIncoming) {
-                ModernIncomingCallControls(
-                    onAccept = onAcceptCall,
-                    onDecline = onDeclineCall,
-                    onMessage = { showMessageDialog = true }
-                )
-            } else {
-                ModernActiveCallControls(
-                    isMuted = isMuted,
-                    isSpeaker = isSpeaker,
-                    onMuteToggle = {
-                        isMuted = !isMuted
-                        onMuteToggle(isMuted)
-                    },
-                    onSpeakerToggle = {
-                        isSpeaker = !isSpeaker
-                        onSpeakerToggle(isSpeaker)
-                    },
-                    onDialpadClick = { showDialpad = true },
-                    onAddCallClick = { showAddCallDialog = true },
-                    onVideoClick = { showVideoNotSupported = true },
-                    onContactsClick = { onOpenContacts() },
-                    onEndCall = onEndCall
-                )
-            }
+                // Answer/Decline or End call button
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isIncoming) {
+                        // Decline button
+                        FloatingActionButton(
+                            onClick = onDeclineCall,
+                            containerColor = Color.Red,
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CallEnd,
+                                contentDescription = "Decline",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
 
-            Spacer(modifier = Modifier.height(32.dp))
-        }
-
-        // Dialpad Overlay
-        AnimatedVisibility(
-            visible = showDialpad,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-        ) {
-            DialpadOverlay(
-                onDismiss = { showDialpad = false },
-                onDigitClick = { digit ->
-                    call.playDtmfTone(digit[0])
-                    call.stopDtmfTone()
+                        // Accept button
+                        FloatingActionButton(
+                            onClick = onAcceptCall,
+                            containerColor = Color.Green,
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Call,
+                                contentDescription = "Accept",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    } else {
+                        // End call button
+                        FloatingActionButton(
+                            onClick = onEndCall,
+                            containerColor = Color.Red,
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CallEnd,
+                                contentDescription = "End Call",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
                 }
-            )
+            }
         }
     }
 
-    // Quick Message Dialog
-    if (showMessageDialog) {
-        QuickMessageDialog(
-            phoneNumber = phoneNumber,
-            onDismiss = { showMessageDialog = false },
-            onMessageSent = {
-                showMessageDialog = false
-                // Optionally decline the call after sending message
-                onDeclineCall()
+    // Dialogs
+    if (showDialpad) {
+        DialpadDialog(
+            onDismiss = { showDialpad = false },
+            onDigitClick = { digit ->
+                // Send DTMF tone
+                call.playDtmfTone(digit.first())
             }
         )
     }
 
-    // Other Dialogs
+    if (showMessageDialog) {
+        QuickMessageDialog(
+            phoneNumber = phoneNumber,
+            onDismiss = { showMessageDialog = false },
+            onMessageSent = { showMessageDialog = false }
+        )
+    }
+
     if (showAddCallDialog) {
         AlertDialog(
             onDismissRequest = { showAddCallDialog = false },
-            icon = { Icon(Icons.Default.Add, contentDescription = null) },
+            icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
             title = { Text("Add Call") },
-            text = { Text("Conference calling is not yet implemented.") },
+            text = { Text("Conference calling is not yet available.") },
             confirmButton = {
                 TextButton(onClick = { showAddCallDialog = false }) {
                     Text("OK")
@@ -618,91 +679,34 @@ fun QuickMessageDialog(
         "What's up?",
         "Send me a text message."
     )
-
-    var customMessage by remember { mutableStateOf("") }
-    var showCustomInput by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                "Send quick message",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-        },
+        icon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null) },
+        title = { Text("Quick Message") },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (!showCustomInput) {
-                    quickReplies.forEach { message ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    sendSMS(phoneNumber, message)
-                                    onMessageSent()
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Text(
-                                text = message,
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Send a quick message:")
+                quickReplies.forEach { message ->
                     OutlinedButton(
-                        onClick = { showCustomInput = true },
+                        onClick = {
+                            try {
+                                val smsManager = SmsManager.getDefault()
+                                smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+                                onMessageSent()
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Custom message")
-                    }
-                } else {
-                    OutlinedTextField(
-                        value = customMessage,
-                        onValueChange = { customMessage = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Type your message") },
-                        maxLines = 3
-                    )
-
-                    if (errorMessage != null) {
-                        Text(
-                            text = errorMessage!!,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Text(message, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                 }
             }
         },
         confirmButton = {
-            if (showCustomInput) {
-                TextButton(
-                    onClick = {
-                        if (customMessage.isNotBlank()) {
-                            sendSMS(phoneNumber, customMessage)
-                            onMessageSent()
-                        } else {
-                            errorMessage = "Please enter a message"
-                        }
-                    }
-                ) {
-                    Text("Send")
-                }
-            }
-        },
-        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
@@ -710,210 +714,55 @@ fun QuickMessageDialog(
     )
 }
 
-private fun sendSMS(phoneNumber: String, message: String) {
-    try {
-        val smsManager = SmsManager.getDefault()
-        smsManager.sendTextMessage(phoneNumber, null, message, null, null)
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-}
-
 @Composable
-fun ModernIncomingCallControls(
-    onAccept: () -> Unit,
-    onDecline: () -> Unit,
-    onMessage: () -> Unit
+fun DialpadDialog(
+    onDismiss: () -> Unit,
+    onDigitClick: (String) -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Decline button
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = onDecline,
-                    modifier = Modifier.size(80.dp),
-                    containerColor = Color(0xFFDC3545),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
-                ) {
-                    Icon(
-                        Icons.Default.CallEnd,
-                        contentDescription = "Decline",
-                        modifier = Modifier.size(36.dp),
-                        tint = Color.White
-                    )
-                }
-                Text(
-                    text = "Decline",
-                    fontSize = 16.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+    val digits = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("*", "0", "#")
+    )
 
-            // Message button
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Dialpad") },
+        text = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FloatingActionButton(
-                    onClick = onMessage,
-                    modifier = Modifier.size(64.dp),
-                    containerColor = Color.White.copy(alpha = 0.2f),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 4.dp,
-                        pressedElevation = 8.dp
-                    )
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Message,
-                        contentDescription = "Message",
-                        modifier = Modifier.size(28.dp),
-                        tint = Color.White
-                    )
+                digits.forEach { row ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { digit ->
+                            OutlinedButton(
+                                onClick = { onDigitClick(digit) },
+                                modifier = Modifier.size(64.dp)
+                            ) {
+                                Text(
+                                    text = digit,
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                            }
+                        }
+                    }
                 }
-                Text(
-                    text = "Message",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontWeight = FontWeight.Normal
-                )
             }
-
-            // Accept button
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = onAccept,
-                    modifier = Modifier.size(80.dp),
-                    containerColor = Color(0xFF28A745),
-                    elevation = FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 8.dp,
-                        pressedElevation = 12.dp
-                    )
-                ) {
-                    Icon(
-                        Icons.Default.Phone,
-                        contentDescription = "Accept",
-                        modifier = Modifier.size(36.dp),
-                        tint = Color.White
-                    )
-                }
-                Text(
-                    text = "Accept",
-                    fontSize = 16.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium
-                )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
         }
-    }
+    )
 }
 
 @Composable
-fun ModernActiveCallControls(
-    isMuted: Boolean,
-    isSpeaker: Boolean,
-    onMuteToggle: () -> Unit,
-    onSpeakerToggle: () -> Unit,
-    onDialpadClick: () -> Unit,
-    onAddCallClick: () -> Unit,
-    onVideoClick: () -> Unit,
-    onContactsClick: () -> Unit,
-    onEndCall: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(28.dp)
-    ) {
-        // First row of controls
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            ModernCallControlButton(
-                icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                label = "Mute",
-                isActive = isMuted,
-                onClick = onMuteToggle
-            )
-
-            ModernCallControlButton(
-                icon = Icons.Default.Dialpad,
-                label = "Keypad",
-                onClick = onDialpadClick
-            )
-
-            ModernCallControlButton(
-                icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeDown,
-                label = "Speaker",
-                isActive = isSpeaker,
-                onClick = onSpeakerToggle
-            )
-        }
-
-        // Second row of controls
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            ModernCallControlButton(
-                icon = Icons.Default.Add,
-                label = "Add",
-                onClick = onAddCallClick
-            )
-
-            ModernCallControlButton(
-                icon = Icons.Default.Videocam,
-                label = "Video",
-                onClick = onVideoClick
-            )
-
-            ModernCallControlButton(
-                icon = Icons.Default.Contacts,
-                label = "Contacts",
-                onClick = onContactsClick
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // End call button
-        FloatingActionButton(
-            onClick = onEndCall,
-            modifier = Modifier.size(76.dp),
-            containerColor = Color(0xFFDC3545),
-            elevation = FloatingActionButtonDefaults.elevation(
-                defaultElevation = 8.dp,
-                pressedElevation = 12.dp
-            )
-        ) {
-            Icon(
-                Icons.Default.CallEnd,
-                contentDescription = "End call",
-                modifier = Modifier.size(36.dp),
-                tint = Color.White
-            )
-        }
-    }
-}
-
-@Composable
-fun ModernCallControlButton(
+fun CallControlButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     isActive: Boolean = false,
@@ -921,140 +770,34 @@ fun ModernCallControlButton(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Surface(
+            shape = CircleShape,
+            color = if (isActive) Color.White else Color.White.copy(alpha = 0.3f),
             modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onClick),
-            color = if (isActive) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.15f),
-            tonalElevation = if (isActive) 4.dp else 0.dp
+                .size(56.dp)
+                .clickable(onClick = onClick)
         ) {
-            Box(
-                contentAlignment = Alignment.Center
-            ) {
+            Box(contentAlignment = Alignment.Center) {
                 Icon(
                     icon,
                     contentDescription = label,
-                    modifier = Modifier.size(28.dp),
-                    tint = Color.White
+                    tint = if (isActive) Color.Black else Color.White,
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }
         Text(
             text = label,
-            fontSize = 13.sp,
-            color = Color.White.copy(alpha = 0.9f),
-            fontWeight = FontWeight.Normal
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.9f)
         )
-    }
-}
-
-@Composable
-fun DialpadOverlay(
-    onDismiss: () -> Unit,
-    onDigitClick: (String) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF1A237E)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "Dialpad",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Dialpad grid
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                listOf(
-                    listOf("1" to "", "2" to "ABC", "3" to "DEF"),
-                    listOf("4" to "GHI", "5" to "JKL", "6" to "MNO"),
-                    listOf("7" to "PQRS", "8" to "TUV", "9" to "WXYZ"),
-                    listOf("*" to "", "0" to "+", "#" to "")
-                ).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        row.forEach { (number, letters) ->
-                            DialpadButton(number, letters, onDigitClick)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun DialpadButton(
-    number: String,
-    letters: String,
-    onClick: (String) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(80.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.15f))
-            .clickable { onClick(number) },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = number,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
-            if (letters.isNotEmpty()) {
-                Text(
-                    text = letters,
-                    fontSize = 10.sp,
-                    letterSpacing = 1.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
-            }
-        }
     }
 }
 
 fun formatDuration(seconds: Int): String {
     val minutes = seconds / 60
     val secs = seconds % 60
-    return String.format("%d:%02d", minutes, secs)
+    return String.format("%02d:%02d", minutes, secs)
 }

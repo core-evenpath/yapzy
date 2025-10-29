@@ -62,6 +62,7 @@ data class Conversation(
     val id: String,
     val contactName: String,
     val contactAvatar: String,
+    val photoUri: String? = null,
     val messages: List<Message>,
     val lastMessage: Message,
     val unreadCount: Int = 0,

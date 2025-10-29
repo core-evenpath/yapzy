@@ -87,6 +87,7 @@ class SMSManager(private val context: Context) {
                             id = threadId,
                             contactName = contactName,
                             contactAvatar = initials,
+                            photoUri = contact?.photoUri,
                             messages = listOf(message),
                             lastMessage = message,
                             unreadCount = if (!isRead && !isFromUser) 1 else 0,
@@ -179,11 +180,6 @@ class SMSManager(private val context: Context) {
     }
 
     fun sendSMS(phoneNumber: String, message: String): Boolean {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS)
-            != PackageManager.PERMISSION_GRANTED) {
-            return false
-        }
-
         return try {
             val smsManager = android.telephony.SmsManager.getDefault()
             smsManager.sendTextMessage(phoneNumber, null, message, null, null)
