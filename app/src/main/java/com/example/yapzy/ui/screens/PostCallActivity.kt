@@ -23,9 +23,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.yapzy.phone.Contact
 import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.phone.PhoneManager
 import com.example.yapzy.ui.theme.YapzyTheme
+import com.google.gson.Gson
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -72,7 +74,26 @@ class PostCallActivity : ComponentActivity() {
                     timestamp = timestamp,
                     onDismiss = { finish() },
                     onViewProfile = {
-                        // TODO: Navigate to contact details
+                        // Get contact info
+                        val contactsManager = ContactsManager(this)
+                        val contact = contactsManager.getContactByNumber(phoneNumber)
+
+                        // Create contact object (real or temporary)
+                        val contactToShow = contact ?: Contact(
+                            id = phoneNumber,
+                            name = phoneNumber,
+                            phoneNumber = phoneNumber,
+                            isFavorite = false
+                        )
+
+                        // Navigate directly to ContactDetailsScreen
+                        val intent = Intent(this, ContactDetailsActivity::class.java).apply {
+                            val gson = Gson()
+                            val contactJson = gson.toJson(contactToShow)
+                            putExtra("contact_json", contactJson)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(intent)
                         finish()
                     }
                 )
@@ -354,10 +375,7 @@ fun PostCallScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // TODO: Save notes to database
-                        // For now, just dismiss
                         showNotesDialog = false
-                        // Show success message
                         errorMessage = "Notes saved successfully"
                     }
                 ) {

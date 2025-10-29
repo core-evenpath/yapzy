@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
 
     private var hasPermissions = false
     private var initialPhoneNumber: String? = null
+    private var contactJsonForNavigation: String? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -66,7 +67,8 @@ class MainActivity : ComponentActivity() {
                             val navController = rememberNavController()
                             AppNavigation(
                                 navController = navController,
-                                initialPhoneNumber = initialPhoneNumber
+                                initialPhoneNumber = initialPhoneNumber,
+                                initialContactJson = contactJsonForNavigation
                             )
                         } else {
                             PermissionScreen(
@@ -87,9 +89,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+
         val phoneNumber = handleIntent(intent)
         if (phoneNumber != null) {
             initialPhoneNumber = phoneNumber
+            recreate()
+        }
+
+        // Handle contact navigation from PostCallActivity
+        if (intent.action == "android.intent.action.VIEW_CONTACT") {
+            contactJsonForNavigation = intent.getStringExtra("contact_json")
             recreate()
         }
     }

@@ -4,9 +4,13 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.provider.ContactsContract
 import android.util.Log
 import androidx.core.content.ContextCompat
+import java.io.InputStream
 
 /**
  * Data class representing a contact
@@ -15,7 +19,8 @@ data class Contact(
     val id: String,
     val name: String,
     val phoneNumber: String,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val photoUri: String? = null
 )
 
 /**
@@ -39,6 +44,24 @@ class ContactsManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error checking contacts permission", e)
             false
+        }
+    }
+
+    /**
+     * Load contact photo as Bitmap
+     */
+    fun loadContactPhoto(photoUri: String?): Bitmap? {
+        if (photoUri == null) return null
+
+        return try {
+            val uri = Uri.parse(photoUri)
+            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+            inputStream?.use {
+                BitmapFactory.decodeStream(it)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading contact photo", e)
+            null
         }
     }
 
@@ -73,7 +96,8 @@ class ContactsManager(private val context: Context) {
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.STARRED
+                ContactsContract.CommonDataKinds.Phone.STARRED,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
             )
 
             cursor = context.contentResolver.query(
@@ -93,6 +117,7 @@ class ContactsManager(private val context: Context) {
             val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
             val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             val starredIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.STARRED)
+            val photoUriIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
             if (idIndex < 0 || nameIndex < 0 || numberIndex < 0 || starredIndex < 0) {
                 Log.w(TAG, "Invalid column indices")
@@ -117,12 +142,18 @@ class ContactsManager(private val context: Context) {
                             } catch (e: Exception) {
                                 false
                             }
+                            val photoUri = if (photoUriIndex >= 0) {
+                                cursor.getString(photoUriIndex)
+                            } else {
+                                null
+                            }
 
                             return Contact(
                                 id = id,
                                 name = name,
                                 phoneNumber = phoneNumber,
-                                isFavorite = starred
+                                isFavorite = starred,
+                                photoUri = photoUri
                             )
                         }
                     }
@@ -158,7 +189,8 @@ class ContactsManager(private val context: Context) {
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.STARRED
+                ContactsContract.CommonDataKinds.Phone.STARRED,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
             )
 
             cursor = context.contentResolver.query(
@@ -178,6 +210,7 @@ class ContactsManager(private val context: Context) {
             val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
             val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             val starredIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.STARRED)
+            val photoUriIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
             if (idIndex < 0 || nameIndex < 0 || numberIndex < 0 || starredIndex < 0) {
                 Log.w(TAG, "Invalid column indices")
@@ -194,6 +227,11 @@ class ContactsManager(private val context: Context) {
                     } catch (e: Exception) {
                         false
                     }
+                    val photoUri = if (photoUriIndex >= 0) {
+                        cursor.getString(photoUriIndex)
+                    } else {
+                        null
+                    }
 
                     // Avoid duplicates - keep only one number per contact
                     if (!contactsMap.containsKey(id) && number.isNotEmpty()) {
@@ -201,7 +239,8 @@ class ContactsManager(private val context: Context) {
                             id = id,
                             name = name,
                             phoneNumber = number,
-                            isFavorite = starred
+                            isFavorite = starred,
+                            photoUri = photoUri
                         )
                     }
                 } catch (e: Exception) {
@@ -238,7 +277,8 @@ class ContactsManager(private val context: Context) {
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.STARRED
+                ContactsContract.CommonDataKinds.Phone.STARRED,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
             )
 
             val selection = "${ContactsContract.CommonDataKinds.Phone.STARRED} = ?"
@@ -260,6 +300,7 @@ class ContactsManager(private val context: Context) {
             val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
             val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
             val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            val photoUriIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
             if (idIndex < 0 || nameIndex < 0 || numberIndex < 0) {
                 Log.w(TAG, "Invalid column indices")
@@ -271,6 +312,11 @@ class ContactsManager(private val context: Context) {
                     val id = cursor.getString(idIndex) ?: continue
                     val name = cursor.getString(nameIndex) ?: "Unknown"
                     val number = cursor.getString(numberIndex) ?: ""
+                    val photoUri = if (photoUriIndex >= 0) {
+                        cursor.getString(photoUriIndex)
+                    } else {
+                        null
+                    }
 
                     // Avoid duplicates
                     if (!contactsMap.containsKey(id) && number.isNotEmpty()) {
@@ -278,7 +324,8 @@ class ContactsManager(private val context: Context) {
                             id = id,
                             name = name,
                             phoneNumber = number,
-                            isFavorite = true
+                            isFavorite = true,
+                            photoUri = photoUri
                         )
                     }
                 } catch (e: Exception) {

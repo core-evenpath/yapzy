@@ -62,11 +62,21 @@ sealed class BottomNavItem(
 @Composable
 fun AppNavigation(
     navController: NavHostController,
-    initialPhoneNumber: String? = null
+    initialPhoneNumber: String? = null,
+    initialContactJson: String? = null
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val gson = remember { Gson() }
+
+    // Navigate to contact details if provided from PostCallActivity
+    LaunchedEffect(initialContactJson) {
+        if (initialContactJson != null) {
+            navController.navigate(Screen.ContactDetails.createRoute(initialContactJson)) {
+                popUpTo(Screen.Contacts.route)
+            }
+        }
+    }
 
     // Determine if we should show bottom bar
     val showBottomBar = currentDestination?.route in listOf(
