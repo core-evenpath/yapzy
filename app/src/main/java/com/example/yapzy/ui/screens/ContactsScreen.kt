@@ -14,71 +14,64 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import com.example.yapzy.data.MessageCache
-import com.example.yapzy.models.Conversation
-import com.example.yapzy.phone.SMSManager
+import com.example.yapzy.phone.Contact
+import com.example.yapzy.phone.ContactsManager
+import com.example.yapzy.phone.PhoneManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConversationListScreen(
-    onConversationClick: (String) -> Unit
+fun ContactsScreen(
+    onContactClick: (Contact) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val smsManager = remember { SMSManager(context) }
-    val messageCache = remember { MessageCache(context) }
+    val contactsManager = remember { ContactsManager(context) }
+    val phoneManager = remember { PhoneManager(context) }
 
     var searchQuery by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var conversations by remember { mutableStateOf<List<Conversation>>(emptyList()) }
+    var contacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
+    var showFavoritesOnly by remember { mutableStateOf(false) }
 
-    // Load from cache immediately, then refresh in background
-    LaunchedEffect(lifecycleOwner) {
+    // Load contacts on lifecycle start
+    LaunchedEffect(lifecycleOwner, showFavoritesOnly) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            // Load from cache first
-            val cached = messageCache.getConversations()
-            if (cached != null) {
-                conversations = cached
-                isLoading = false
-            } else {
-                isLoading = true
-            }
-
-            // Refresh from source in background
-            isRefreshing = true
-            loadConversations(smsManager, messageCache) { result, error ->
-                conversations = result
+            loadContacts(contactsManager, showFavoritesOnly) { result, error ->
+                contacts = result
                 errorMessage = error
                 isLoading = false
-                isRefreshing = false
             }
         }
     }
 
-    // Filter conversations based on search
-    val filteredConversations = remember(conversations, searchQuery) {
+    // Filter contacts based on search
+    val filteredContacts = remember(contacts, searchQuery) {
         if (searchQuery.isEmpty()) {
-            conversations
+            contacts
         } else {
-            conversations.filter {
-                it.contactName.contains(searchQuery, ignoreCase = true) ||
-                        it.lastMessage.content.contains(searchQuery, ignoreCase = true)
+            contacts.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                        it.phoneNumber.contains(searchQuery, ignoreCase = true)
             }
         }
+    }
+
+    // Group contacts by first letter
+    val groupedContacts = remember(filteredContacts) {
+        filteredContacts.groupBy {
+            it.name.firstOrNull()?.uppercaseChar() ?: '#'
+        }.toSortedMap()
     }
 
     Scaffold(
@@ -86,33 +79,34 @@ fun ConversationListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Messages",
+                        "Contacts",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 actions = {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(12.dp)
-                                .size(24.dp),
-                            strokeWidth = 2.dp
+                    IconButton(onClick = { showFavoritesOnly = !showFavoritesOnly }) {
+                        Icon(
+                            imageVector = if (showFavoritesOnly) Icons.Default.Star else Icons.Default.StarOutline,
+                            contentDescription = "Toggle Favorites",
+                            tint = if (showFavoritesOnly)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface
                         )
                     }
                     IconButton(
                         onClick = {
-                            isRefreshing = true
+                            isLoading = true
                             errorMessage = null
                             scope.launch {
-                                loadConversations(smsManager, messageCache) { result, error ->
-                                    conversations = result
+                                loadContacts(contactsManager, showFavoritesOnly) { result, error ->
+                                    contacts = result
                                     errorMessage = error
-                                    isRefreshing = false
+                                    isLoading = false
                                 }
                             }
-                        },
-                        enabled = !isRefreshing
+                        }
                     ) {
                         Icon(Icons.Default.Refresh, "Refresh")
                     }
@@ -124,10 +118,10 @@ fun ConversationListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { /* New message */ },
+                onClick = { /* Add new contact */ },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
-                Icon(Icons.Default.Edit, "New Message")
+                Icon(Icons.Default.PersonAdd, "Add Contact")
             }
         }
     ) { padding ->
@@ -143,7 +137,7 @@ fun ConversationListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                placeholder = { Text("Search messages") },
+                placeholder = { Text("Search contacts") },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = "Search")
                 },
@@ -163,7 +157,7 @@ fun ConversationListScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     )
@@ -188,7 +182,7 @@ fun ConversationListScreen(
             }
 
             when {
-                isLoading && conversations.isEmpty() -> {
+                isLoading -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -199,14 +193,14 @@ fun ConversationListScreen(
                         ) {
                             CircularProgressIndicator()
                             Text(
-                                "Loading messages...",
+                                "Loading contacts...",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
-                filteredConversations.isEmpty() -> {
+                filteredContacts.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -216,13 +210,17 @@ fun ConversationListScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             Icon(
-                                Icons.Default.Message,
+                                Icons.Default.Contacts,
                                 contentDescription = null,
                                 modifier = Modifier.size(64.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                             Text(
-                                text = if (searchQuery.isEmpty()) "No messages yet" else "No messages found",
+                                text = if (searchQuery.isEmpty()) {
+                                    if (showFavoritesOnly) "No favorite contacts" else "No contacts"
+                                } else {
+                                    "No contacts found"
+                                },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -233,16 +231,38 @@ fun ConversationListScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(filteredConversations, key = { it.id }) { conversation ->
-                            ConversationItem(
-                                conversation = conversation,
-                                onClick = {
-                                    onConversationClick(conversation.id)
-                                }
-                            )
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                            )
+                        groupedContacts.forEach { (letter, contactsInGroup) ->
+                            item {
+                                Text(
+                                    text = letter.toString(),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            items(contactsInGroup, key = { it.id }) { contact ->
+                                ContactItem(
+                                    contact = contact,
+                                    onClick = { onContactClick(contact) },
+                                    onCallClick = {
+                                        scope.launch {
+                                            try {
+                                                phoneManager.makeCall(contact.phoneNumber)
+                                            } catch (e: Exception) {
+                                                errorMessage = "Failed to make call: ${e.message}"
+                                            }
+                                        }
+                                    },
+                                    onMessageClick = {
+                                        // Navigate to messages - this would need navigation integration
+                                    }
+                                )
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                                )
+                            }
                         }
                     }
                 }
@@ -251,101 +271,117 @@ fun ConversationListScreen(
     }
 }
 
-private suspend fun loadConversations(
-    smsManager: SMSManager,
-    messageCache: MessageCache,
-    onResult: (List<Conversation>, String?) -> Unit
+private suspend fun loadContacts(
+    contactsManager: ContactsManager,
+    favoritesOnly: Boolean,
+    onResult: (List<Contact>, String?) -> Unit
 ) = withContext(Dispatchers.IO) {
     try {
-        val conversations = smsManager.getConversations()
-        messageCache.saveConversations(conversations)
+        val contacts = if (favoritesOnly) {
+            contactsManager.getFavoriteContacts()
+        } else {
+            contactsManager.getAllContacts()
+        }
         withContext(Dispatchers.Main) {
-            onResult(conversations, null)
+            onResult(contacts, null)
         }
     } catch (e: SecurityException) {
         withContext(Dispatchers.Main) {
-            onResult(emptyList(), "Permission denied. Please grant SMS permissions.")
+            onResult(emptyList(), "Permission denied. Please grant contacts permission.")
         }
     } catch (e: Exception) {
         withContext(Dispatchers.Main) {
-            onResult(emptyList(), "Error loading messages: ${e.message}")
+            onResult(emptyList(), "Error loading contacts: ${e.message}")
         }
     }
 }
 
 @Composable
-fun ConversationItem(
-    conversation: Conversation,
-    onClick: () -> Unit
+fun ContactItem(
+    contact: Contact,
+    onClick: () -> Unit,
+    onCallClick: () -> Unit,
+    onMessageClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         // Avatar
         Box(
             modifier = Modifier
-                .size(56.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = conversation.contactAvatar,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.Bold
+                text = contact.name.split(" ")
+                    .mapNotNull { it.firstOrNull() }
+                    .take(2)
+                    .joinToString("")
+                    .uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
 
-        // Message content
+        // Contact Info
         Column(
             modifier = Modifier.weight(1f)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = conversation.contactName,
+                    text = contact.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.weight(1f)
+                    fontWeight = FontWeight.Medium
                 )
-                Text(
-                    text = conversation.lastMessage.getFormattedTime(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (contact.isFavorite) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = "Favorite",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
-
-            Spacer(Modifier.height(4.dp))
-
             Text(
-                text = conversation.getPreviewText(),
+                text = contact.phoneNumber,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (conversation.unreadCount > 0)
-                    MaterialTheme.colorScheme.onSurface
-                else
-                    MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (conversation.unreadCount > 0) FontWeight.Medium else FontWeight.Normal
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-        // Unread badge
-        if (conversation.unreadCount > 0) {
-            Badge(
-                containerColor = MaterialTheme.colorScheme.primary
+        // Action Buttons
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            IconButton(
+                onClick = onMessageClick,
+                modifier = Modifier.size(40.dp)
             ) {
-                Text(
-                    conversation.unreadCount.toString(),
-                    style = MaterialTheme.typography.labelSmall
+                Icon(
+                    Icons.Default.Message,
+                    contentDescription = "Message",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            IconButton(
+                onClick = onCallClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    Icons.Default.Phone,
+                    contentDescription = "Call",
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }

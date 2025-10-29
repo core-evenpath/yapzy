@@ -24,7 +24,7 @@ data class Message(
     val senderId: String,
     val senderName: String,
     val content: String,
-    val timestamp: Long, // Using Long (milliseconds) instead of LocalDateTime
+    val timestamp: Long,
     val isFromUser: Boolean,
     val priority: Priority = Priority.MEDIUM,
     val tone: Tone = Tone.NEUTRAL,
@@ -57,7 +57,7 @@ data class Message(
     }
 }
 
-// Conversation with AI analysis
+// Conversation
 data class Conversation(
     val id: String,
     val contactName: String,
@@ -89,24 +89,24 @@ data class ContextualInfo(
 
 data class MeetingInfo(
     val title: String,
-    val time: Long, // Using Long instead of LocalDateTime
+    val time: Long,
     val location: String?
 )
 
 data class EmailInfo(
     val subject: String,
     val preview: String,
-    val time: Long // Using Long instead of LocalDateTime
+    val time: Long
 )
 
-// AI-powered smart reply suggestion
+// Smart reply suggestion
 data class SmartReply(
     val text: String,
     val tone: Tone,
     val confidence: Float
 )
 
-// Message draft with AI assistance
+// Message draft
 data class MessageDraft(
     val content: String,
     val suggestions: List<String> = emptyList(),

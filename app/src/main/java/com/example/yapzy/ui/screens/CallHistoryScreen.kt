@@ -18,12 +18,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.yapzy.phone.CallLogManager
 import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.phone.PhoneManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -123,75 +129,51 @@ fun CallHistoryScreen(
     onCallClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val phoneManager = remember { PhoneManager(context) }
     val contactsManager = remember { ContactsManager(context) }
     val callLogManager = remember { CallLogManager(context) }
 
     var selectedFilter by remember { mutableStateOf(CallFilter.ALL) }
     var searchQuery by remember { mutableStateOf("") }
-    var isSearchActive by remember { mutableStateOf(false) }
-    var refreshTrigger by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var allCalls by remember { mutableStateOf<List<CallLogEntry>>(emptyList()) }
+    var favoriteContacts by remember { mutableStateOf<List<FavoriteContact>>(emptyList()) }
 
-    val allCalls = remember(refreshTrigger) {
-        try {
-            callLogManager.getCallLogs(limit = 200)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+    // Load call history on lifecycle start
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            loadCallHistory(callLogManager, contactsManager) { calls, favorites, error ->
+                allCalls = calls
+                favoriteContacts = favorites
+                errorMessage = error
+                isLoading = false
+            }
         }
     }
 
     val filteredCalls = remember(selectedFilter, allCalls, searchQuery) {
-        try {
-            var calls = when (selectedFilter) {
-                CallFilter.ALL -> allCalls
-                CallFilter.MISSED -> allCalls.filter { it.callType == CallType.MISSED }
-                CallFilter.CONTACTS -> allCalls.filter { it.contactName != null }
-                CallFilter.NON_SPAM -> allCalls
-            }
-
-            if (searchQuery.isNotEmpty()) {
-                calls = calls.filter {
-                    it.contactName?.contains(searchQuery, ignoreCase = true) == true ||
-                            it.phoneNumber.contains(searchQuery, ignoreCase = true)
-                }
-            }
-
-            calls
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+        var calls = when (selectedFilter) {
+            CallFilter.ALL -> allCalls
+            CallFilter.MISSED -> allCalls.filter { it.callType == CallType.MISSED }
+            CallFilter.CONTACTS -> allCalls.filter { it.contactName != null }
+            CallFilter.NON_SPAM -> allCalls
         }
-    }
 
-    val favoriteContacts = remember(refreshTrigger) {
-        try {
-            contactsManager.getFavoriteContacts().take(10).map {
-                FavoriteContact(
-                    id = it.id,
-                    name = it.name,
-                    initials = it.name.split(" ")
-                        .mapNotNull { word -> word.firstOrNull()?.uppercaseChar() }
-                        .take(2)
-                        .joinToString("")
-                        .ifEmpty { "??" },
-                    phoneNumber = it.phoneNumber
-                )
+        if (searchQuery.isNotEmpty()) {
+            calls = calls.filter {
+                it.contactName?.contains(searchQuery, ignoreCase = true) == true ||
+                        it.phoneNumber.contains(searchQuery, ignoreCase = true)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
         }
+
+        calls
     }
 
     val groupedCalls = remember(filteredCalls) {
-        try {
-            filteredCalls.groupBy { it.getTimeSection() }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyMap()
-        }
+        filteredCalls.groupBy { it.getTimeSection() }
     }
 
     Column(
@@ -200,96 +182,172 @@ fun CallHistoryScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         // Search Bar
-        if (!isSearchActive) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                placeholder = { Text("Search contacts") },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "Search")
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            placeholder = { Text("Search contacts") },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = "Search")
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear")
                     }
-                },
-                shape = RoundedCornerShape(28.dp),
-                singleLine = true
-            )
-        }
+                }
+            },
+            shape = RoundedCornerShape(28.dp),
+            singleLine = true
+        )
 
         FilterTabRow(
             selectedFilter = selectedFilter,
             onFilterSelected = { selectedFilter = it }
         )
 
+        // Error message
+        errorMessage?.let { error ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    if (selectedFilter == CallFilter.ALL && !isSearchActive && favoriteContacts.isNotEmpty()) {
-                        item {
-                            FavoritesSection(
-                                favorites = favoriteContacts,
-                                onFavoriteClick = { contact ->
-                                    try {
-                                        phoneManager.makeCall(contact.phoneNumber)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    groupedCalls.forEach { (section, calls) ->
-                        item {
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            CircularProgressIndicator()
                             Text(
-                                text = section,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        items(calls) { call ->
-                            CallHistoryItem(
-                                call = call,
-                                onClick = { onCallClick(call.phoneNumber) },
-                                onCallClick = {
-                                    try {
-                                        phoneManager.makeCall(call.phoneNumber)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
+                                "Loading call history...",
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
                     }
+                }
+                filteredCalls.isEmpty() -> {
+                    EmptyCallHistoryState(filter = selectedFilter)
+                }
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    ) {
+                        if (selectedFilter == CallFilter.ALL && searchQuery.isEmpty() && favoriteContacts.isNotEmpty()) {
+                            item {
+                                FavoritesSection(
+                                    favorites = favoriteContacts,
+                                    onFavoriteClick = { contact ->
+                                        scope.launch {
+                                            try {
+                                                phoneManager.makeCall(contact.phoneNumber)
+                                            } catch (e: Exception) {
+                                                errorMessage = "Failed to make call"
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
 
-                    if (filteredCalls.isEmpty()) {
-                        item {
-                            EmptyCallHistoryState(filter = selectedFilter)
+                        groupedCalls.forEach { (section, calls) ->
+                            item {
+                                Text(
+                                    text = section,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            items(calls, key = { it.id }) { call ->
+                                CallHistoryItem(
+                                    call = call,
+                                    onClick = { onCallClick(call.phoneNumber) },
+                                    onCallClick = {
+                                        scope.launch {
+                                            try {
+                                                phoneManager.makeCall(call.phoneNumber)
+                                            } catch (e: Exception) {
+                                                errorMessage = "Failed to make call"
+                                            }
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+private suspend fun loadCallHistory(
+    callLogManager: CallLogManager,
+    contactsManager: ContactsManager,
+    onResult: (List<CallLogEntry>, List<FavoriteContact>, String?) -> Unit
+) = withContext(Dispatchers.IO) {
+    try {
+        val calls = callLogManager.getCallLogs(limit = 200)
+        val favorites = contactsManager.getFavoriteContacts().take(10).map {
+            FavoriteContact(
+                id = it.id,
+                name = it.name,
+                initials = it.name.split(" ")
+                    .mapNotNull { word -> word.firstOrNull()?.uppercaseChar() }
+                    .take(2)
+                    .joinToString("")
+                    .ifEmpty { "??" },
+                phoneNumber = it.phoneNumber
+            )
+        }
+        withContext(Dispatchers.Main) {
+            onResult(calls, favorites, null)
+        }
+    } catch (e: SecurityException) {
+        withContext(Dispatchers.Main) {
+            onResult(emptyList(), emptyList(), "Permission denied")
+        }
+    } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+            onResult(emptyList(), emptyList(), "Error loading call history: ${e.message}")
         }
     }
 }
@@ -355,7 +413,7 @@ fun FavoritesSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(favorites) { favorite ->
+            items(favorites, key = { it.id }) { favorite ->
                 FavoriteContactItem(
                     contact = favorite,
                     onClick = { onFavoriteClick(favorite) }
@@ -514,7 +572,7 @@ fun CallHistoryItem(
 fun EmptyCallHistoryState(filter: CallFilter) {
     Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {

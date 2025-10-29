@@ -64,6 +64,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation("com.google.android.gms:play-services-auth-api-phone:18.1.0")
 
+    // Gson for JSON serialization
+    implementation("com.google.code.gson:gson:2.10.1")
+
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
     testImplementation("junit:junit:4.13.2")

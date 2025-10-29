@@ -66,6 +66,11 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.Yapzy" />
 
+        <activity
+            android:name=".ui.screens.PostCallActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Yapzy" />
+
         <service
             android:name=".phone.YapzyInCallService"
             android:exported="true"
