@@ -8,18 +8,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.yapzy.phone.Contact
 import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.phone.PhoneManager
@@ -30,7 +34,7 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsScreen(
-    onContactClick: (Contact) -> Unit
+    onContactClick: (Contact) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -245,7 +249,6 @@ fun ContactsScreen(
                             items(contactsInGroup, key = { it.id }) { contact ->
                                 ContactItem(
                                     contact = contact,
-                                    onClick = { onContactClick(contact) },
                                     onCallClick = {
                                         scope.launch {
                                             try {
@@ -257,6 +260,9 @@ fun ContactsScreen(
                                     },
                                     onMessageClick = {
                                         // Navigate to messages - this would need navigation integration
+                                    },
+                                    onContactClick = {
+                                        onContactClick(contact)
                                     }
                                 )
                                 HorizontalDivider(
@@ -299,19 +305,21 @@ private suspend fun loadContacts(
 @Composable
 fun ContactItem(
     contact: Contact,
-    onClick: () -> Unit,
     onCallClick: () -> Unit,
-    onMessageClick: () -> Unit
+    onMessageClick: () -> Unit,
+    onContactClick: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable { onContactClick() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar
+        // Avatar - show photo if available, otherwise show initials
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -319,16 +327,57 @@ fun ContactItem(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = contact.name.split(" ")
-                    .mapNotNull { it.firstOrNull() }
-                    .take(2)
-                    .joinToString("")
-                    .uppercase(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            if (contact.photoUri != null && contact.photoUri.isNotEmpty()) {
+                // Display actual contact photo with proper error handling
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(contact.photoUri)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Contact photo for ${contact.name}",
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    },
+                    error = {
+                        // Display initials on error
+                        Text(
+                            text = contact.name.split(" ")
+                                .mapNotNull { it.firstOrNull() }
+                                .take(2)
+                                .joinToString("")
+                                .uppercase(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                )
+            } else {
+                // Display initials when no photo URI
+                Text(
+                    text = contact.name.split(" ")
+                        .mapNotNull { it.firstOrNull() }
+                        .take(2)
+                        .joinToString("")
+                        .uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
         }
 
         // Contact Info
@@ -369,7 +418,7 @@ fun ContactItem(
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
-                    Icons.Default.Message,
+                    Icons.AutoMirrored.Filled.Message,
                     contentDescription = "Message",
                     tint = MaterialTheme.colorScheme.primary
                 )

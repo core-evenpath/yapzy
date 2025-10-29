@@ -197,7 +197,7 @@ fun DialpadScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Call button and backspace
+        // Action buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -206,8 +206,8 @@ fun DialpadScreen(
             // Backspace button
             IconButton(
                 onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     if (phoneNumber.isNotEmpty()) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         phoneNumber = phoneNumber.dropLast(1)
                     }
                 },
@@ -216,7 +216,7 @@ fun DialpadScreen(
             ) {
                 Icon(
                     Icons.Default.Backspace,
-                    contentDescription = "Backspace",
+                    contentDescription = "Delete",
                     modifier = Modifier.size(32.dp),
                     tint = if (phoneNumber.isNotEmpty())
                         MaterialTheme.colorScheme.onSurface
@@ -230,19 +230,17 @@ fun DialpadScreen(
                 onClick = {
                     if (phoneNumber.isNotEmpty()) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        try {
-                            phoneManager.makeCall(phoneNumber)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                        phoneManager.makeCall(phoneNumber)
                     }
                 },
                 modifier = Modifier.size(72.dp),
-                containerColor = if (phoneNumber.isEmpty())
-                    MaterialTheme.colorScheme.surfaceVariant
+                containerColor = if (phoneNumber.isNotEmpty())
+                    MaterialTheme.colorScheme.primary
                 else
-                    Color(0xFF4CAF50),
-                contentColor = Color.White
+                    MaterialTheme.colorScheme.surfaceVariant,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = if (phoneNumber.isNotEmpty()) 6.dp else 0.dp
+                )
             ) {
                 Icon(
                     Icons.Default.Phone,
@@ -285,7 +283,7 @@ fun DialpadButton(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(
                 interactionSource = interactionSource,
-                indication = androidx.compose.material.ripple.rememberRipple(
+                indication = ripple(
                     bounded = true,
                     color = MaterialTheme.colorScheme.primary
                 ),

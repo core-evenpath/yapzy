@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,10 +32,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.example.yapzy.phone.CallManager
 import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.ui.theme.YapzyTheme
@@ -61,12 +65,10 @@ class InCallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Acquire wake lock to keep screen responsive
+        // Acquire proximity wake lock to automatically turn off screen when phone is near ear
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                    PowerManager.ON_AFTER_RELEASE,
+            PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK,
             "Yapzy::InCallWakeLock"
         )
         wakeLock?.acquire(10*60*1000L) // 10 minutes max
@@ -84,16 +86,8 @@ class InCallActivity : ComponentActivity() {
             )
         }
 
-        // Keep screen on and ensure touch responsiveness
+        // Keep screen on when not in proximity sensor range
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-        // Disable proximity sensor effects on screen
-        window.addFlags(WindowManager.LayoutParams.FLAG_IGNORE_CHEEK_PRESSES)
-
-        // Ensure full brightness for better visibility and touch response
-        val layoutParams = window.attributes
-        layoutParams.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
-        window.attributes = layoutParams
 
         call = CallManager.currentCall
         callStartTime = System.currentTimeMillis()
@@ -465,6 +459,7 @@ fun AnimatedContactAvatar(
     initials: String,
     contactsManager: ContactsManager
 ) {
+    val context = LocalContext.current
     val infiniteTransition = rememberInfiniteTransition(label = "avatar_pulse")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -484,15 +479,50 @@ fun AnimatedContactAvatar(
             .background(Color.White.copy(alpha = 0.25f)),
         contentAlignment = Alignment.Center
     ) {
-        if (contact?.photoUri != null) {
-            // Show contact photo
-            AsyncImage(
-                model = contact.photoUri,
+        if (contact?.photoUri != null && contact.photoUri.isNotEmpty()) {
+            // Show contact photo with proper error handling
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(contact.photoUri)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = "Contact photo",
                 modifier = Modifier
                     .size(140.dp)
                     .clip(CircleShape),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                loading = {
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                },
+                error = {
+                    // Show initials on error
+                    Box(
+                        modifier = Modifier
+                            .size(120.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = initials,
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
             )
         } else {
             // Show initials
@@ -520,6 +550,8 @@ fun StaticContactAvatar(
     initials: String,
     contactsManager: ContactsManager
 ) {
+    val context = LocalContext.current
+
     Box(
         modifier = Modifier
             .size(140.dp)
@@ -527,15 +559,39 @@ fun StaticContactAvatar(
             .background(Color.White.copy(alpha = 0.25f)),
         contentAlignment = Alignment.Center
     ) {
-        if (contact?.photoUri != null) {
-            // Show contact photo
-            AsyncImage(
-                model = contact.photoUri,
+        if (contact?.photoUri != null && contact.photoUri.isNotEmpty()) {
+            // Show contact photo with proper error handling
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(contact.photoUri)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = "Contact photo",
                 modifier = Modifier
                     .size(140.dp)
                     .clip(CircleShape),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                loading = {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                },
+                error = {
+                    // Show initials on error
+                    Text(
+                        text = initials,
+                        fontSize = 56.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             )
         } else {
             // Show initials
@@ -722,7 +778,7 @@ fun ModernIncomingCallControls(
                     )
                 ) {
                     Icon(
-                        Icons.Default.Message,
+                        Icons.AutoMirrored.Filled.Message,
                         contentDescription = "Message",
                         modifier = Modifier.size(28.dp),
                         tint = Color.White
