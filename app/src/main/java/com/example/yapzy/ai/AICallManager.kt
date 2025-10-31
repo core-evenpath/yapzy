@@ -1,3 +1,24 @@
+package com.yourpackage.app // Replace with your actual package name
+
+import android.content.Context
+import android.os.Build
+import android.telephony.SmsManager
+import android.util.Log
+import android.widget.Toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+// Import your custom classes - adjust package names as needed
+import com.yourpackage.app.BuildConfig
+import com.yourpackage.app.viewmodel.CallViewModel
+import com.yourpackage.app.model.TranscriptItem
+import com.yourpackage.app.client.OpenAIRealtimeClient
+import com.yourpackage.app.audio.AudioStreamManager
+
 class AICallManager(
     private val context: Context,
     private val viewModel: CallViewModel
@@ -10,7 +31,7 @@ class AICallManager(
         viewModel.startAiCall()
 
         val instructions = """
-            You are an AI phone assistant. You are answering a call on behalf of the user.
+            You are an AI phone assistant. You are answering a call on behalf of the user. 
             Be polite, concise, and helpful. If it's spam, politely decline and ask to be removed from the list.
             Keep responses under 20 seconds.
         """.trimIndent()
@@ -89,7 +110,13 @@ class AICallManager(
 
     fun sendSMS(phoneNumber: String, message: String) {
         try {
-            val smsManager = context.getSystemService(SmsManager::class.java)
+            // Use getDefault() for better compatibility across Android versions
+            val smsManager = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                context.getSystemService(SmsManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                SmsManager.getDefault()
+            }
             smsManager.sendTextMessage(phoneNumber, null, message, null, null)
             Toast.makeText(context, "Message sent", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
