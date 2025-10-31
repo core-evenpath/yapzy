@@ -13,9 +13,7 @@ import java.util.concurrent.TimeUnit
 class OpenAIRealtimeClient(
     private val apiKey: String,
     private val onTranscript: (Speaker, String) -> Unit,
-    private val onAudioReceived: (ByteArray) -> Unit,
-    private val onError: (String) -> Unit,
-    private val onConnectionStateChanged: (Boolean) -> Unit
+    private val onAudioReceived: (ByteArray) -> Unit
 ) {
     companion object {
         private const val TAG = "OpenAIRealtimeClient"
@@ -31,6 +29,24 @@ class OpenAIRealtimeClient(
 
     private var isConnected = false
     private var currentTranscript = StringBuilder()
+
+    // Optional callbacks with default no-op implementations
+    private var onError: (String) -> Unit = { error -> Log.e(TAG, "Error: $error") }
+    private var onConnectionStateChanged: (Boolean) -> Unit = { connected -> Log.d(TAG, "Connection state: $connected") }
+
+    /**
+     * Set optional error callback
+     */
+    fun setOnError(callback: (String) -> Unit) {
+        this.onError = callback
+    }
+
+    /**
+     * Set optional connection state callback
+     */
+    fun setOnConnectionStateChanged(callback: (Boolean) -> Unit) {
+        this.onConnectionStateChanged = callback
+    }
 
     /**
      * Connect to OpenAI Realtime API with custom instructions

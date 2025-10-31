@@ -1,7 +1,6 @@
-package com.yourpackage.app // Replace with your actual package name
+package com.example.yapzy.ai
 
 import android.content.Context
-import android.os.Build
 import android.telephony.SmsManager
 import android.util.Log
 import android.widget.Toast
@@ -12,20 +11,18 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// Import your custom classes - adjust package names as needed
-import com.yourpackage.app.BuildConfig
-import com.yourpackage.app.viewmodel.CallViewModel
-import com.yourpackage.app.model.TranscriptItem
-import com.yourpackage.app.client.OpenAIRealtimeClient
-import com.yourpackage.app.audio.AudioStreamManager
-
 class AICallManager(
     private val context: Context,
-    private val viewModel: CallViewModel
+    private val viewModel: AICallViewModel
 ) {
     private var openAIClient: OpenAIRealtimeClient? = null
     private var audioManager: AudioStreamManager? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    // You need to set your OpenAI API key here or pass it in
+    private val apiKey: String = "YOUR_OPENAI_API_KEY_HERE"
+    // OR get it from BuildConfig if you configure it in build.gradle:
+    // private val apiKey: String = BuildConfig.OPENAI_API_KEY
 
     fun startAICall(callerNumber: String) {
         viewModel.startAiCall()
@@ -39,7 +36,7 @@ class AICallManager(
         audioManager = AudioStreamManager(context)
 
         openAIClient = OpenAIRealtimeClient(
-            apiKey = BuildConfig.OPENAI_API_KEY,
+            apiKey = apiKey,
             onTranscript = { speaker, text ->
                 val time = viewModel.formatTime(viewModel.callDuration.value)
                 viewModel.addTranscriptItem(TranscriptItem(speaker, text, time))
