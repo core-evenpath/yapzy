@@ -27,13 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.yapzy.ai.*
-import com.example.yapzy.phone.ContactsManager
 import com.example.yapzy.ui.theme.YapzyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -44,7 +44,6 @@ class AICallActivity : ComponentActivity() {
     private val viewModel: AICallViewModel by viewModels()
     private var aiCallManager: AICallManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var callStartTime: Long = 0
 
     companion object {
         const val EXTRA_PHONE_NUMBER = "phone_number"
@@ -69,10 +68,8 @@ class AICallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Setup wake lock and window flags
         setupWindowFlags()
 
-        // Get caller info from intent
         val phoneNumber = intent.getStringExtra(EXTRA_PHONE_NUMBER) ?: "Unknown"
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME)
         val callerTypeStr = intent.getStringExtra(EXTRA_CALLER_TYPE) ?: "UNKNOWN"
@@ -83,16 +80,12 @@ class AICallActivity : ComponentActivity() {
             else -> CallerType.UNKNOWN
         }
 
-        // Initialize caller info
         viewModel.setCallerInfo(CallerInfo(
             name = callerName,
             number = phoneNumber,
             type = callerType
         ))
 
-        callStartTime = System.currentTimeMillis()
-
-        // Initialize AI manager
         aiCallManager = AICallManager(
             context = this,
             onTranscriptUpdate = { transcript ->
@@ -164,9 +157,6 @@ fun AICallScreen(
     val isSpeaker by viewModel.isSpeaker.collectAsState()
     val callerInfo by viewModel.callerInfo.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     // Call duration timer
     LaunchedEffect(callState) {
@@ -269,11 +259,13 @@ fun AICallScreen(
                 }
             )
 
-            AICallState.DECLINED -> {
+            AICallState.DECLINED, AICallState.ENDED -> {
                 LaunchedEffect(Unit) {
                     onDismiss()
                 }
             }
+
+            else -> {}
         }
 
         // Error Snackbar
@@ -308,8 +300,8 @@ fun IncomingCallScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF1B5E20),
-                        Color(0xFF2E7D32)
+                        Color(0xFF1E3A8A),
+                        Color(0xFF3B82F6)
                     )
                 )
             )
@@ -317,42 +309,17 @@ fun IncomingCallScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp)
-                .statusBarsPadding(),
+                .statusBarsPadding()
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top - Call type
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.White.copy(alpha = 0.2f),
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                Text(
-                    text = "Incoming Call",
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            Spacer(Modifier.height(40.dp))
 
-            // Middle - Caller info with animation
+            // Caller info
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Animated avatar
-                val infiniteTransition = rememberInfiniteTransition(label = "ring")
-                val scale by infiniteTransition.animateFloat(
-                    initialValue = 1f,
-                    targetValue = 1.1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "scale"
-                )
-
                 Box(
                     modifier = Modifier
                         .size(120.dp)
@@ -414,7 +381,7 @@ fun IncomingCallScreen(
                 }
             }
 
-            // Bottom - Actions
+            // Actions
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -423,11 +390,10 @@ fun IncomingCallScreen(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    // Decline
                     FloatingActionButton(
                         onClick = onDecline,
                         containerColor = Color.Red,
-                        modifier = Modifier.size(72.dp)
+                        modifier = Modifier.size(70.dp)
                     ) {
                         Icon(
                             Icons.Default.CallEnd,
@@ -437,11 +403,10 @@ fun IncomingCallScreen(
                         )
                     }
 
-                    // Answer
                     FloatingActionButton(
                         onClick = onAnswer,
                         containerColor = Color.Green,
-                        modifier = Modifier.size(72.dp)
+                        modifier = Modifier.size(70.dp)
                     ) {
                         Icon(
                             Icons.Default.Call,
@@ -454,88 +419,38 @@ fun IncomingCallScreen(
 
                 Spacer(Modifier.height(8.dp))
 
-                // AI options
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                // AI Actions
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    OutlinedButton(
+                        onClick = onAICall,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            brush = SolidColor(Color.White)
+                        )
                     ) {
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            "Let AI handle this",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
+                        Icon(Icons.Default.SmartToy, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("AI Answer")
                     }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    OutlinedButton(
+                        onClick = onAIMessage,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
+                            brush = SolidColor(Color.White)
+                        )
                     ) {
-                        // AI Call
-                        OutlinedButton(
-                            onClick = onAICall,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.White.copy(alpha = 0.2f)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                Color.White.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Phone,
-                                    contentDescription = null,
-                                    tint = Color.White
-                                )
-                                Text(
-                                    "AI Call",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
-
-                        // AI Message
-                        OutlinedButton(
-                            onClick = onAIMessage,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color.White.copy(alpha = 0.2f)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                Color.White.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Message,
-                                    contentDescription = null,
-                                    tint = Color.White
-                                )
-                                Text(
-                                    "AI Text",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
+                        Icon(Icons.Default.Message, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("AI Message")
                     }
                 }
             }
@@ -560,8 +475,8 @@ fun ActiveCallScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF1A237E),
-                        Color(0xFF283593)
+                        Color(0xFF1E3A8A),
+                        Color(0xFF3B82F6)
                     )
                 )
             )
@@ -569,17 +484,16 @@ fun ActiveCallScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp)
-                .statusBarsPadding(),
+                .statusBarsPadding()
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Spacer(Modifier.height(32.dp))
-
-            // Caller info
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Spacer(Modifier.height(40.dp))
+
                 Box(
                     modifier = Modifier
                         .size(100.dp)
@@ -599,7 +513,7 @@ fun ActiveCallScreen(
 
                 Text(
                     text = callerInfo?.name ?: callerInfo?.number ?: "Unknown",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -607,70 +521,52 @@ fun ActiveCallScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = formatDuration(duration),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White.copy(alpha = 0.9f)
+                    text = formatCallDuration(duration),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.8f)
                 )
             }
 
-            // Controls
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // Call controls grid
+                // Call controls
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    horizontalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    CallControlButton(
+                    AICallControlButton(
                         icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                        label = "Mute",
+                        label = if (isMuted) "Unmute" else "Mute",
                         isActive = isMuted,
                         onClick = onMuteToggle
                     )
-                    CallControlButton(
-                        icon = if (isSpeaker) Icons.Default.VolumeUp else Icons.Default.VolumeDown,
+
+                    AICallControlButton(
+                        icon = Icons.Default.VolumeUp,
                         label = "Speaker",
                         isActive = isSpeaker,
                         onClick = onSpeakerToggle
-                    )
-                    CallControlButton(
-                        icon = Icons.Default.Dialpad,
-                        label = "Keypad",
-                        onClick = { /* TODO */ }
                     )
                 }
 
                 // Hand to AI button
                 Button(
                     onClick = onHandToAI,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2196F3)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
+                        containerColor = Color.White.copy(alpha = 0.3f)
+                    )
                 ) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.SmartToy, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        "Hand to AI",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("Hand to AI")
                 }
 
                 // End call button
                 FloatingActionButton(
                     onClick = onEndCall,
                     containerColor = Color.Red,
-                    modifier = Modifier.size(72.dp)
+                    modifier = Modifier.size(70.dp)
                 ) {
                     Icon(
                         Icons.Default.CallEnd,
@@ -689,25 +585,25 @@ fun ConnectingScreen(callerInfo: CallerInfo?) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF1E3A8A),
+                        Color(0xFF3B82F6)
+                    )
+                )
+            ),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(64.dp),
-                strokeWidth = 4.dp
-            )
+            CircularProgressIndicator(color = Color.White)
+            Spacer(Modifier.height(16.dp))
             Text(
-                "Connecting to AI...",
-                style = MaterialTheme.typography.titleLarge
-            )
-            Text(
-                callerInfo?.name ?: callerInfo?.number ?: "",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Connecting...",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White
             )
         }
     }
@@ -724,7 +620,6 @@ fun AICallInProgressScreen(
 ) {
     val listState = rememberLazyListState()
 
-    // Auto-scroll to latest message
     LaunchedEffect(transcript.size) {
         if (transcript.isNotEmpty()) {
             listState.animateScrollToItem(transcript.size - 1)
@@ -754,164 +649,76 @@ fun AICallInProgressScreen(
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = callerInfo?.name?.take(2)?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        Icons.Default.SmartToy,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
 
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    text = callerInfo?.name ?: callerInfo?.number ?: "Unknown",
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "AI Handling Call",
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = callerInfo?.name ?: callerInfo?.number ?: "Unknown",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(Modifier.height(8.dp))
 
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF2196F3).copy(alpha = 0.15f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        Color(0xFF2196F3).copy(alpha = 0.3f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF2196F3))
-                        )
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = null,
-                            tint = Color(0xFF2196F3),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            if (isFromTakeover) "AI took over • ${formatDuration(duration)}"
-                            else "AI is talking",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF2196F3),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                Text(
+                    text = formatCallDuration(duration),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
 
             Spacer(Modifier.height(16.dp))
 
             // Transcript
-            Surface(
+            LazyColumn(
+                state = listState,
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color.Green)
-                        )
-                        Text(
-                            "Live Conversation",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    if (transcript.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "Connecting...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        LazyColumn(
-                            state = listState,
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(transcript) { item ->
-                                TranscriptBubble(item)
-                            }
-                        }
-                    }
+                items(transcript) { item ->
+                    TranscriptItemView(item)
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
             // Actions
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Button(
-                    onClick = onTakeOver,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4CAF50)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Phone, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (isFromTakeover) "Take Back Call" else "Take Over Call",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                if (!isFromTakeover) {
+                    Button(
+                        onClick = onTakeOver,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Take Over")
+                    }
                 }
 
                 Button(
                     onClick = onEndCall,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
+                    modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.Red
-                    ),
-                    shape = RoundedCornerShape(16.dp)
+                    )
                 ) {
-                    Icon(Icons.Default.CallEnd, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
                     Text("End Call")
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                "AI is handling the call. You can take control anytime.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }
@@ -936,202 +743,84 @@ fun AIMessageComposingScreen(
                 .statusBarsPadding()
         ) {
             // Header
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = callerInfo?.name?.take(2)?.uppercase() ?: "?",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontWeight = FontWeight.Bold
-                    )
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.width(8.dp))
 
                 Text(
-                    text = callerInfo?.name ?: callerInfo?.number ?: "Unknown",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    text = "AI Composing Message",
+                    style = MaterialTheme.typography.headlineSmall
                 )
-
-                Spacer(Modifier.height(8.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color(0xFF9C27B0).copy(alpha = 0.15f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        Color(0xFF9C27B0).copy(alpha = 0.3f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = null,
-                            tint = Color(0xFF9C27B0),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            if (isTyping) "AI is typing..." else "Message ready",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF9C27B0),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
 
-            // Declined notice
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Column {
-                        Text(
-                            "Call declined",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "AI will send a text reply",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Message preview
+            // Caller info
             Text(
-                "AI Reply:",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
+                text = "To: ${callerInfo?.name ?: callerInfo?.number ?: "Unknown"}",
+                style = MaterialTheme.typography.titleMedium
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
 
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                )
+            // Message
+            Card(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier.padding(20.dp),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier.padding(16.dp)
                 ) {
-                    if (message.isEmpty()) {
-                        Text(
-                            "Composing message...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    if (isTyping) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp)
                         )
+                        Spacer(Modifier.height(8.dp))
+                        Text("AI is composing message...")
                     } else {
                         Text(
-                            message,
-                            style = MaterialTheme.typography.bodyLarge,
-                            textAlign = TextAlign.Center
+                            text = message.ifEmpty { "No message composed yet" },
+                            style = MaterialTheme.typography.bodyLarge
                         )
                     }
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.weight(1f))
 
-            // Actions
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Send button
+            Button(
+                onClick = onSendMessage,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = message.isNotEmpty() && !isTyping
             ) {
-                Button(
-                    onClick = onSendMessage,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    enabled = !isTyping && message.isNotEmpty(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF9C27B0)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Send, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (isTyping) "Composing..." else "Send Reply",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Button(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Text("Back")
-                }
+                Icon(Icons.Default.Send, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Send Message")
             }
-
-            Spacer(Modifier.height(8.dp))
-
-            Text(
-                "Message will be sent via SMS",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
 }
 
 @Composable
-fun TranscriptBubble(item: TranscriptItem) {
+fun TranscriptItemView(item: TranscriptItem) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (item.speaker == Speaker.CALLER)
-            Arrangement.Start else Arrangement.End
+            Arrangement.Start
+        else
+            Arrangement.End
     ) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = when (item.speaker) {
-                Speaker.AI -> Color(0xFF2196F3)
-                Speaker.USER -> Color(0xFF4CAF50)
-                Speaker.CALLER -> MaterialTheme.colorScheme.surfaceVariant
-            },
+            shape = RoundedCornerShape(12.dp),
+            color = if (item.speaker == Speaker.CALLER)
+                MaterialTheme.colorScheme.surfaceVariant
+            else
+                MaterialTheme.colorScheme.primary,
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Column(
@@ -1139,16 +828,16 @@ fun TranscriptBubble(item: TranscriptItem) {
             ) {
                 Text(
                     text = when (item.speaker) {
-                        Speaker.AI -> "🤖 AI"
-                        Speaker.USER -> "👤 You"
-                        Speaker.CALLER -> "📞 Caller"
+                        Speaker.CALLER -> "Caller"
+                        Speaker.AI -> "AI"
+                        Speaker.USER -> "You"
                     },
                     style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
                     color = if (item.speaker == Speaker.CALLER)
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        MaterialTheme.colorScheme.primary
                     else
-                        Color.White.copy(alpha = 0.7f),
-                    fontWeight = FontWeight.Bold
+                        Color.White
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -1161,7 +850,7 @@ fun TranscriptBubble(item: TranscriptItem) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = item.getFormattedTime(),
+                    text = item.timestamp,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (item.speaker == Speaker.CALLER)
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -1174,7 +863,7 @@ fun TranscriptBubble(item: TranscriptItem) {
 }
 
 @Composable
-fun CallControlButton(
+private fun AICallControlButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     isActive: Boolean = false,
@@ -1207,39 +896,8 @@ fun CallControlButton(
     }
 }
 
-private fun formatDuration(seconds: Int): String {
+private fun formatCallDuration(seconds: Int): String {
     val mins = seconds / 60
     val secs = seconds % 60
     return String.format("%02d:%02d", mins, secs)
 }
-```
-
----
-
-## 📝 Summary of Changes
-
-### **Files Created:**
-1. ✅ `AICallModels.kt` - Data models for call states and transcript
-2. ✅ `OpenAIRealtimeClient.kt` - WebSocket client for OpenAI communication
-3. ✅ `AudioStreamManager.kt` - Audio recording and playback
-4. ✅ `AICallManager.kt` - Business logic coordinator
-5. ✅ `AICallViewModel.kt` - State management
-6. ✅ `AICallActivity.kt` - Complete UI with all 6 states
-
-### **Files Modified:**
-1. ✅ `build.gradle.kts` - Added OkHttp, coroutines dependencies
-2. ✅ `gradle.properties` - Added OpenAI API key placeholder
-3. ✅ `AndroidManifest.xml` - Added audio permissions and new activity
-4. ✅ `PermissionHandler.kt` - Added audio permission checks
-
----
-
-## 🚀 How to Use
-
-### **1. Get OpenAI API Key**
-```
-1. Go to https://platform.openai.com/api-keys
-2. Create a new secret key
-3. Copy the key
-4. Paste it in gradle.properties:
-OPENAI_API_KEY=sk-proj-your-actual-key-here
