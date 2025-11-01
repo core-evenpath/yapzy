@@ -64,15 +64,10 @@ class AudioStreamManager(private val context: Context) {
                 while (isRecording && isActive) {
                     val read = audioRecord?.read(buffer, 0, bufferSize) ?: 0
                     if (read > 0) {
-                        // Copy only the bytes that were read
-                        val audioChunk = buffer.copyOf(read)
-                        onAudioData(audioChunk)
+                        onAudioData(buffer.copyOf(read))
                     }
                 }
             }
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Permission denied for audio recording", e)
-            isRecording = false
         } catch (e: Exception) {
             Log.e(TAG, "Error starting audio recording", e)
             isRecording = false
@@ -83,74 +78,45 @@ class AudioStreamManager(private val context: Context) {
      * Stop recording audio
      */
     fun stopRecording() {
-        if (!isRecording) return
-
         isRecording = false
         recordingJob?.cancel()
-
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-            audioRecord = null
-            Log.d(TAG, "Stopped recording audio")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping audio recording", e)
-        }
+        audioRecord?.stop()
+        audioRecord?.release()
+        audioRecord = null
+        Log.d(TAG, "Stopped recording audio")
     }
 
     /**
-     * Start audio playback
+     * Play received audio
      */
-    fun startPlayback() {
-        if (isPlaying) {
-            Log.w(TAG, "Already playing")
-            return
-        }
-
-        val bufferSize = AudioTrack.getMinBufferSize(
-            SAMPLE_RATE,
-            CHANNEL_CONFIG_OUT,
-            AUDIO_FORMAT
-        ) * BUFFER_SIZE_MULTIPLIER
-
+    fun playAudio(audioData: ByteArray) {
         try {
-            audioTrack = AudioTrack.Builder()
-                .setAudioAttributes(
+            if (audioTrack == null) {
+                val bufferSize = AudioTrack.getMinBufferSize(
+                    SAMPLE_RATE,
+                    CHANNEL_CONFIG_OUT,
+                    AUDIO_FORMAT
+                )
+
+                audioTrack = AudioTrack(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                .setAudioFormat(
+                        .build(),
                     AudioFormat.Builder()
-                        .setEncoding(AUDIO_FORMAT)
                         .setSampleRate(SAMPLE_RATE)
+                        .setEncoding(AUDIO_FORMAT)
                         .setChannelMask(CHANNEL_CONFIG_OUT)
-                        .build()
+                        .build(),
+                    bufferSize,
+                    AudioTrack.MODE_STREAM,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE
                 )
-                .setBufferSizeInBytes(bufferSize)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build()
 
-            audioTrack?.play()
-            isPlaying = true
-            Log.d(TAG, "Started audio playback at $SAMPLE_RATE Hz")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error starting audio playback", e)
-            isPlaying = false
-        }
-    }
+                audioTrack?.play()
+                isPlaying = true
+            }
 
-    /**
-     * Play audio data through speaker
-     */
-    fun playAudio(audioData: ByteArray) {
-        if (!isPlaying || audioTrack == null) {
-            Log.w(TAG, "Cannot play audio - playback not started")
-            return
-        }
-
-        try {
             audioTrack?.write(audioData, 0, audioData.size)
         } catch (e: Exception) {
             Log.e(TAG, "Error playing audio", e)
@@ -158,49 +124,38 @@ class AudioStreamManager(private val context: Context) {
     }
 
     /**
-     * Stop audio playback
-     */
-    fun stopPlayback() {
-        if (!isPlaying) return
-
-        isPlaying = false
-
-        try {
-            audioTrack?.stop()
-            audioTrack?.release()
-            audioTrack = null
-            Log.d(TAG, "Stopped audio playback")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error stopping audio playback", e)
-        }
-    }
-
-    /**
      * Mute/unmute microphone
      */
     fun setMuted(muted: Boolean) {
-        // Stop/start recording to mute
-        if (muted && isRecording) {
-            audioRecord?.stop()
-        } else if (!muted && isRecording) {
-            audioRecord?.startRecording()
+        audioRecord?.let {
+            if (muted && isRecording) {
+                stopRecording()
+            }
         }
     }
 
     /**
      * Toggle speaker on/off
      */
-    fun setSpeakerOn(speakerOn: Boolean) {
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.isSpeakerphoneOn = speakerOn
-        Log.d(TAG, "Speaker ${if (speakerOn) "enabled" else "disabled"}")
+    fun setSpeaker(speaker: Boolean) {
+        try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.isSpeakerphoneOn = speaker
+            Log.d(TAG, "Speaker ${if (speaker) "enabled" else "disabled"}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling speaker", e)
+        }
     }
 
     /**
-     * Release all resources
+     * Clean up audio resources
      */
-    fun release() {
+    fun cleanup() {
         stopRecording()
-        stopPlayback()
+        isPlaying = false
+        audioTrack?.stop()
+        audioTrack?.release()
+        audioTrack = null
+        Log.d(TAG, "Cleaned up audio resources")
     }
 }

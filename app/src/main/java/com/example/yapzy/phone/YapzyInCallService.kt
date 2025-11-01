@@ -1,6 +1,5 @@
 package com.example.yapzy.phone
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -8,61 +7,68 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.telecom.Call
-import android.telecom.CallAudioState
 import android.telecom.InCallService
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.yapzy.R
+import com.example.yapzy.ui.screens.AICallActivity
 import com.example.yapzy.ui.screens.InCallActivity
 
 class YapzyInCallService : InCallService() {
 
     companion object {
-        private const val NOTIFICATION_ID = 1001
-        private const val CHANNEL_ID = "yapzy_call_channel"
+        private const val TAG = "YapzyInCallService"
+        private const val CHANNEL_ID = "yapzy_calls"
+        private const val NOTIFICATION_ID = 1
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "Service created")
+        createNotificationChannel()
+        CallManager.inCallService = this
     }
 
     override fun onCallAdded(call: Call) {
         super.onCallAdded(call)
+        Log.d(TAG, "Call added: ${call.details.handle}")
         CallManager.currentCall = call
-        CallManager.inCallService = this
 
-        // Create notification channel
-        createNotificationChannel()
-
-        // Show persistent notification
+        // Show notification
         showCallNotification(call)
 
-        // Launch the in-call UI with proper flags for prominence
-        val intent = Intent(this, InCallActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
-            addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        // Launch appropriate activity based on call state
+        when (call.details.state) {
+            Call.STATE_RINGING -> {
+                // Incoming call - launch AICallActivity with AI options
+                val phoneNumber = call.details.handle?.schemeSpecificPart ?: "Unknown"
+                val callerName = call.details.callerDisplayName ?: phoneNumber
 
-            // Pass call state to help the activity configure itself
-            putExtra("CALL_STATE", call.state)
-        }
-        startActivity(intent)
+                Log.d(TAG, "Incoming call from: $callerName ($phoneNumber)")
 
-        // Register callback to update notification
-        call.registerCallback(object : Call.Callback() {
-            override fun onStateChanged(call: Call, state: Int) {
-                showCallNotification(call)
+                val intent = AICallActivity.createIntent(
+                    context = this,
+                    phoneNumber = phoneNumber,
+                    callerName = callerName,
+                    callerType = "UNKNOWN"
+                )
+                startActivity(intent)
             }
-        })
+            Call.STATE_DIALING, Call.STATE_ACTIVE -> {
+                // Outgoing or active call - launch regular InCallActivity
+                val intent = Intent(this, InCallActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+            }
+        }
     }
 
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
-        if (CallManager.currentCall == call) {
-            CallManager.currentCall = null
-        }
-        CallManager.inCallService = null
-
-        // Remove notification
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancel(NOTIFICATION_ID)
+        Log.d(TAG, "Call removed")
+        CallManager.currentCall = null
+        stopForeground(true)
     }
 
     private fun createNotificationChannel() {
@@ -72,17 +78,17 @@ class YapzyInCallService : InCallService() {
                 "Active Calls",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Shows ongoing call information"
+                description = "Shows ongoing call notifications"
                 setSound(null, null)
             }
 
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
     }
 
     private fun showCallNotification(call: Call) {
-        val phoneNumber = call.details?.handle?.schemeSpecificPart ?: "Unknown"
+        val phoneNumber = call.details.handle?.schemeSpecificPart ?: "Unknown"
         val contactsManager = ContactsManager(this)
         val contact = contactsManager.getContactByNumber(phoneNumber)
         val displayName = contact?.name ?: phoneNumber
@@ -95,10 +101,15 @@ class YapzyInCallService : InCallService() {
             else -> "Call"
         }
 
-        // Intent to return to InCallActivity
-        val returnIntent = Intent(this, InCallActivity::class.java).apply {
+        // Intent to return to call activity
+        val returnIntent = if (call.state == Call.STATE_RINGING) {
+            AICallActivity.createIntent(this, phoneNumber, contact?.name, "UNKNOWN")
+        } else {
+            Intent(this, InCallActivity::class.java)
+        }.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
+
         val returnPendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -133,31 +144,12 @@ class YapzyInCallService : InCallService() {
             .setFullScreenIntent(returnPendingIntent, true)
             .build()
 
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-}
-
-object CallManager {
-    var currentCall: Call? = null
-    var inCallService: YapzyInCallService? = null
-
-    fun setMuted(muted: Boolean) {
-        inCallService?.setMuted(muted)
+        startForeground(NOTIFICATION_ID, notification)
     }
 
-    fun setSpeaker(speaker: Boolean) {
-        inCallService?.let { service ->
-            val route = if (speaker) {
-                CallAudioState.ROUTE_SPEAKER
-            } else {
-                CallAudioState.ROUTE_EARPIECE
-            }
-            service.setAudioRoute(route)
-        }
-    }
-
-    fun endCall() {
-        currentCall?.disconnect()
+    override fun onDestroy() {
+        super.onDestroy()
+        CallManager.inCallService = null
+        Log.d(TAG, "Service destroyed")
     }
 }

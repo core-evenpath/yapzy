@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.yapzy.ai.*
+import com.example.yapzy.phone.CallManager
 import com.example.yapzy.ui.theme.YapzyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -60,7 +62,11 @@ class AICallActivity : ComponentActivity() {
                 putExtra(EXTRA_PHONE_NUMBER, phoneNumber)
                 putExtra(EXTRA_CALLER_NAME, callerName)
                 putExtra(EXTRA_CALLER_TYPE, callerType)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                        Intent.FLAG_ACTIVITY_NO_USER_ACTION or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
         }
     }
@@ -158,7 +164,6 @@ fun AICallScreen(
     val callerInfo by viewModel.callerInfo.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
 
-    // Call duration timer
     LaunchedEffect(callState) {
         if (callState == AICallState.ACTIVE || callState == AICallState.AI_TAKEOVER || callState == AICallState.AI_CALL) {
             while (isActive) {
@@ -168,7 +173,6 @@ fun AICallScreen(
         }
     }
 
-    // Show error messages
     errorMessage?.let { error ->
         LaunchedEffect(error) {
             delay(3000)
@@ -185,18 +189,22 @@ fun AICallScreen(
             AICallState.INCOMING -> IncomingCallScreen(
                 callerInfo = callerInfo,
                 onAnswer = {
+                    CallManager.answerCall()
                     viewModel.setCallState(AICallState.ACTIVE)
                 },
                 onDecline = {
+                    CallManager.rejectCall()
                     viewModel.setCallState(AICallState.DECLINED)
                     onDismiss()
                 },
                 onAICall = {
+                    CallManager.answerCall()
                     callerInfo?.let { info ->
                         aiCallManager.startAICall(info.number, info.name)
                     }
                 },
                 onAIMessage = {
+                    CallManager.rejectCall()
                     callerInfo?.let { info ->
                         aiCallManager.composeAIMessage(info.number, info.name)
                     }
@@ -222,6 +230,7 @@ fun AICallScreen(
                     }
                 },
                 onEndCall = {
+                    CallManager.endCall()
                     aiCallManager.endCall()
                     onDismiss()
                 }
@@ -238,6 +247,7 @@ fun AICallScreen(
                     aiCallManager.takeBackCall()
                 },
                 onEndCall = {
+                    CallManager.endCall()
                     aiCallManager.endCall()
                     onDismiss()
                 }
@@ -268,7 +278,6 @@ fun AICallScreen(
             else -> {}
         }
 
-        // Error Snackbar
         errorMessage?.let { error ->
             Snackbar(
                 modifier = Modifier
@@ -316,13 +325,24 @@ fun IncomingCallScreen(
         ) {
             Spacer(Modifier.height(40.dp))
 
-            // Caller info
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.05f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "scale"
+                )
+
                 Box(
                     modifier = Modifier
                         .size(120.dp)
+                        .scale(scale)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.3f)),
                     contentAlignment = Alignment.Center
@@ -381,12 +401,10 @@ fun IncomingCallScreen(
                 }
             }
 
-            // Actions
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Primary actions
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
@@ -419,12 +437,29 @@ fun IncomingCallScreen(
 
                 Spacer(Modifier.height(8.dp))
 
-                // AI Actions
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Star,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        "Let AI handle this call",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     OutlinedButton(
                         onClick = onAICall,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = Color.White
                         ),
@@ -433,13 +468,18 @@ fun IncomingCallScreen(
                             brush = SolidColor(Color.White)
                         )
                     ) {
-                        Icon(Icons.Default.SmartToy, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("AI Answer")
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.SmartToy, contentDescription = null)
+                            Text("AI Answer", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
 
                     OutlinedButton(
                         onClick = onAIMessage,
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = Color.White
                         ),
@@ -448,9 +488,13 @@ fun IncomingCallScreen(
                             brush = SolidColor(Color.White)
                         )
                     ) {
-                        Icon(Icons.Default.Message, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("AI Message")
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Message, contentDescription = null)
+                            Text("AI Text", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             }
@@ -531,7 +575,6 @@ fun ActiveCallScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // Call controls
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
@@ -550,7 +593,6 @@ fun ActiveCallScreen(
                     )
                 }
 
-                // Hand to AI button
                 Button(
                     onClick = onHandToAI,
                     colors = ButtonDefaults.buttonColors(
@@ -562,7 +604,6 @@ fun ActiveCallScreen(
                     Text("Hand to AI")
                 }
 
-                // End call button
                 FloatingActionButton(
                     onClick = onEndCall,
                     containerColor = Color.Red,
@@ -601,9 +642,15 @@ fun ConnectingScreen(callerInfo: CallerInfo?) {
             CircularProgressIndicator(color = Color.White)
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "Connecting...",
+                text = "Connecting to AI...",
                 style = MaterialTheme.typography.headlineSmall,
                 color = Color.White
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = callerInfo?.name ?: callerInfo?.number ?: "",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.7f)
             )
         }
     }
@@ -637,7 +684,6 @@ fun AICallInProgressScreen(
                 .padding(16.dp)
                 .statusBarsPadding()
         ) {
-            // Header
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
@@ -682,7 +728,6 @@ fun AICallInProgressScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Transcript
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
@@ -695,7 +740,6 @@ fun AICallInProgressScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -742,7 +786,6 @@ fun AIMessageComposingScreen(
                 .padding(16.dp)
                 .statusBarsPadding()
         ) {
-            // Header
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -760,7 +803,6 @@ fun AIMessageComposingScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // Caller info
             Text(
                 text = "To: ${callerInfo?.name ?: callerInfo?.number ?: "Unknown"}",
                 style = MaterialTheme.typography.titleMedium
@@ -768,7 +810,6 @@ fun AIMessageComposingScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Message
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -792,7 +833,6 @@ fun AIMessageComposingScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // Send button
             Button(
                 onClick = onSendMessage,
                 modifier = Modifier.fillMaxWidth(),
