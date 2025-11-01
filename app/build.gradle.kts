@@ -17,7 +17,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Add BuildConfig field for OpenAI API Key
+        // Fixed: Complete OPENAI_API_KEY configuration
         buildConfigField("String", "OPENAI_API_KEY", "\"${project.findProperty("OPENAI_API_KEY") ?: ""}\"")
     }
 
@@ -43,7 +43,7 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true  // Enable BuildConfig
+        buildConfig = true
     }
 
     composeOptions {
@@ -81,26 +81,25 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // ===== NEW: AI Voice Call Dependencies =====
-    // OkHttp for WebSocket connection to OpenAI
+    // AI Voice Call Dependencies
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // Coroutines for async operations
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
 
     // Core library desugaring
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.2")
 
-    // Testing dependencies
+    // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 
-    // Debug dependencies
+    // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

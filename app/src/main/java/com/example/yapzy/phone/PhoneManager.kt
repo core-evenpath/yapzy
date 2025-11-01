@@ -5,9 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.telecom.TelecomManager
+import android.telephony.PhoneNumberUtils
 import android.util.Log
 import androidx.core.content.ContextCompat
+import java.util.*
 
 class PhoneManager(private val context: Context) {
 
@@ -15,94 +16,80 @@ class PhoneManager(private val context: Context) {
         private const val TAG = "PhoneManager"
     }
 
-    private val telecomManager: TelecomManager =
-        context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-
-    fun makeCall(phoneNumber: String) {
-        try {
-            Log.d(TAG, "Making call to: $phoneNumber")
-
-            if (ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.CALL_PHONE
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                Log.e(TAG, "CALL_PHONE permission not granted")
-                throw SecurityException("CALL_PHONE permission not granted")
-            }
-
-            val callIntent = Intent(Intent.ACTION_CALL)
-            callIntent.data = Uri.parse("tel:$phoneNumber")
-            callIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-
-            context.startActivity(callIntent)
-            Log.d(TAG, "Call intent started successfully")
-
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                launchInCallActivity()
-            }, 500)
-
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception making call", e)
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Error making call", e)
-            throw e
-        }
-    }
-
-    private fun launchInCallActivity() {
-        try {
-            val inCallIntent = Intent()
-            inCallIntent.setClassName(
-                context.packageName,
-                "com.example.yapzy.ui.screens.InCallActivity"
-            )
-            inCallIntent.putExtra("OUTGOING_CALL", true)
-            inCallIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-
-            context.startActivity(inCallIntent)
-            Log.d(TAG, "InCallActivity launched")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error launching InCallActivity", e)
-        }
-    }
-
-    fun getDefaultDialerPackage(): String? {
-        return try {
-            telecomManager.defaultDialerPackage
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting default dialer package", e)
-            null
-        }
-    }
-
-    fun canMakeCalls(): Boolean {
+    /**
+     * Check if CALL_PHONE permission is granted
+     */
+    fun hasCallPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.CALL_PHONE
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    fun formatPhoneNumberForDisplay(phoneNumber: String): String {
-        // Remove all non-digit characters
-        val digitsOnly = phoneNumber.replace(Regex("[^0-9+]"), "")
-
-        // Format based on length
-        return when {
-            digitsOnly.startsWith("+1") && digitsOnly.length == 12 -> {
-                // US number: +1 (XXX) XXX-XXXX
-                "+1 (${digitsOnly.substring(2, 5)}) ${digitsOnly.substring(5, 8)}-${digitsOnly.substring(8)}"
-            }
-            digitsOnly.length == 10 -> {
-                // US number without country code: (XXX) XXX-XXXX
-                "(${digitsOnly.substring(0, 3)}) ${digitsOnly.substring(3, 6)}-${digitsOnly.substring(6)}"
-            }
-            digitsOnly.length == 11 && digitsOnly.startsWith("1") -> {
-                // US number with 1 prefix: 1 (XXX) XXX-XXXX
-                "1 (${digitsOnly.substring(1, 4)}) ${digitsOnly.substring(4, 7)}-${digitsOnly.substring(7)}"
-            }
-            else -> phoneNumber // Return as-is if doesn't match expected format
+    /**
+     * Make a phone call to the given number
+     */
+    fun makeCall(phoneNumber: String) {
+        if (!hasCallPermission()) {
+            Log.e(TAG, "CALL_PHONE permission not granted")
+            throw SecurityException("CALL_PHONE permission required")
         }
+
+        try {
+            val intent = Intent(Intent.ACTION_CALL).apply {
+                data = Uri.parse("tel:${phoneNumber.trim()}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            Log.d(TAG, "Initiating call to $phoneNumber")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error making call", e)
+            throw e
+        }
+    }
+
+    /**
+     * Open dialer with pre-filled number
+     */
+    fun openDialer(phoneNumber: String) {
+        try {
+            val intent = Intent(Intent.ACTION_DIAL).apply {
+                data = Uri.parse("tel:${phoneNumber.trim()}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            Log.d(TAG, "Opening dialer with $phoneNumber")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening dialer", e)
+            throw e
+        }
+    }
+
+    /**
+     * Format phone number for display
+     */
+    fun formatPhoneNumberForDisplay(phoneNumber: String): String {
+        return try {
+            val countryCode = Locale.getDefault().country
+            PhoneNumberUtils.formatNumber(phoneNumber, countryCode) ?: phoneNumber
+        } catch (e: Exception) {
+            Log.w(TAG, "Error formatting phone number", e)
+            phoneNumber
+        }
+    }
+
+    /**
+     * Clean phone number (remove non-digit characters)
+     */
+    fun cleanPhoneNumber(phoneNumber: String): String {
+        return phoneNumber.replace(Regex("[^0-9+]"), "")
+    }
+
+    /**
+     * Check if a phone number is valid
+     */
+    fun isValidPhoneNumber(phoneNumber: String): Boolean {
+        val cleaned = cleanPhoneNumber(phoneNumber)
+        return cleaned.length >= 10
     }
 }
