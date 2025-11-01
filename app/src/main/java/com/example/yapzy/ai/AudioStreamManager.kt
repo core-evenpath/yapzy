@@ -1,8 +1,11 @@
 package com.example.yapzy.ai
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.*
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 
 /**
@@ -26,11 +29,27 @@ class AudioStreamManager(private val context: Context) {
     private var isPlaying = false
 
     /**
+     * Check if recording permission is granted
+     */
+    private fun hasRecordPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
      * Start recording audio from microphone
      */
     fun startRecording(onAudioData: (ByteArray) -> Unit) {
         if (isRecording) {
             Log.w(TAG, "Already recording")
+            return
+        }
+
+        // Check permission before starting
+        if (!hasRecordPermission()) {
+            Log.e(TAG, "RECORD_AUDIO permission not granted")
             return
         }
 
@@ -65,9 +84,16 @@ class AudioStreamManager(private val context: Context) {
                     val read = audioRecord?.read(buffer, 0, bufferSize) ?: 0
                     if (read > 0) {
                         onAudioData(buffer.copyOf(read))
+                    } else if (read < 0) {
+                        Log.e(TAG, "Error reading audio: $read")
+                        break
                     }
                 }
+                Log.d(TAG, "Recording loop ended")
             }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception starting audio recording - permission not granted", e)
+            isRecording = false
         } catch (e: Exception) {
             Log.e(TAG, "Error starting audio recording", e)
             isRecording = false
@@ -78,10 +104,20 @@ class AudioStreamManager(private val context: Context) {
      * Stop recording audio
      */
     fun stopRecording() {
+        if (!isRecording) {
+            return
+        }
+
         isRecording = false
         recordingJob?.cancel()
-        audioRecord?.stop()
-        audioRecord?.release()
+
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio record", e)
+        }
+
         audioRecord = null
         Log.d(TAG, "Stopped recording audio")
     }
@@ -115,6 +151,7 @@ class AudioStreamManager(private val context: Context) {
 
                 audioTrack?.play()
                 isPlaying = true
+                Log.d(TAG, "Started audio playback")
             }
 
             audioTrack?.write(audioData, 0, audioData.size)
@@ -124,14 +161,11 @@ class AudioStreamManager(private val context: Context) {
     }
 
     /**
-     * Mute/unmute microphone
+     * Mute/unmute microphone (stops/starts recording)
      */
     fun setMuted(muted: Boolean) {
-        audioRecord?.let {
-            if (muted && isRecording) {
-                stopRecording()
-            }
-        }
+        // Muting is handled by stopping recording in AICallManager
+        Log.d(TAG, "Mute state changed: $muted")
     }
 
     /**
@@ -151,11 +185,18 @@ class AudioStreamManager(private val context: Context) {
      * Clean up audio resources
      */
     fun cleanup() {
+        Log.d(TAG, "Cleaning up audio resources")
         stopRecording()
+
         isPlaying = false
-        audioTrack?.stop()
-        audioTrack?.release()
+        try {
+            audioTrack?.stop()
+            audioTrack?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing audio track", e)
+        }
         audioTrack = null
+
         Log.d(TAG, "Cleaned up audio resources")
     }
 }

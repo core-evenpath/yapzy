@@ -1,5 +1,6 @@
 package com.example.yapzy.phone
 
+import com.example.yapzy.YapzyInCallService
 import android.telecom.Call
 import android.telecom.CallAudioState
 
@@ -12,7 +13,7 @@ object CallManager {
     }
 
     fun setSpeaker(speaker: Boolean) {
-        inCallService?.let { service ->
+        inCallService?.let { service: YapzyInCallService ->  // ✅ FIXED: Added explicit type
             val route = if (speaker) {
                 CallAudioState.ROUTE_SPEAKER
             } else {

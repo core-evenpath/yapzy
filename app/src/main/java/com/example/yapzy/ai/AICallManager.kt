@@ -1,9 +1,12 @@
 package com.example.yapzy.ai
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.telephony.SmsManager
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import androidx.core.content.ContextCompat
 import com.example.yapzy.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +33,17 @@ class AICallManager(
 
     private var isMuted = false
     private var isSpeakerOn = false
+    private var isRecording = false
+
+    /**
+     * Check if audio recording permission is granted
+     */
+    private fun hasAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     /**
      * Start AI call handling
@@ -37,6 +51,15 @@ class AICallManager(
     fun startAICall(callerNumber: String, callerName: String?) {
         try {
             Log.d(TAG, "Starting AI call for $callerNumber")
+
+            // Check audio permission
+            if (!hasAudioPermission()) {
+                val error = "Microphone permission is required for AI calls"
+                Log.e(TAG, error)
+                onError(error)
+                return
+            }
+
             onStateChange(AICallState.CONNECTING)
 
             if (SIMULATION_MODE) {
@@ -55,25 +78,30 @@ class AICallManager(
      */
     private fun startSimulationMode(callerNumber: String, callerName: String?) {
         coroutineScope.launch {
-            delay(1000)
-            onStateChange(AICallState.AI_CALL)
+            try {
+                delay(1000)
+                onStateChange(AICallState.AI_CALL)
 
-            addToTranscript(
-                Speaker.AI,
-                "Hello, this is an AI assistant answering on behalf of the user. How may I help you?"
-            )
+                addToTranscript(
+                    Speaker.AI,
+                    "Hello, this is an AI assistant answering on behalf of the user. How may I help you?"
+                )
 
-            delay(2000)
-            addToTranscript(
-                Speaker.CALLER,
-                "Hi, I'm calling about..."
-            )
+                delay(2000)
+                addToTranscript(
+                    Speaker.CALLER,
+                    "Hi, I'm calling about..."
+                )
 
-            delay(1500)
-            addToTranscript(
-                Speaker.AI,
-                "I understand. Let me take a note of that for you."
-            )
+                delay(1500)
+                addToTranscript(
+                    Speaker.AI,
+                    "I understand. Let me take a note of that for you."
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in simulation mode", e)
+                onError("Simulation error: ${e.message}")
+            }
         }
     }
 
@@ -83,6 +111,12 @@ class AICallManager(
     private fun initializeAIClient(callerNumber: String, callerName: String?) {
         coroutineScope.launch {
             try {
+                // Check permission again before starting
+                if (!hasAudioPermission()) {
+                    onError("Microphone permission required")
+                    return@launch
+                }
+
                 val apiKey = BuildConfig.OPENAI_API_KEY
                 if (apiKey.isBlank() || apiKey == "YOUR_OPENAI_API_KEY_HERE") {
                     Log.w(TAG, "OpenAI API key not configured, using simulation mode")
@@ -106,6 +140,9 @@ class AICallManager(
                     setOnConnectionStateChanged { connected ->
                         if (connected) {
                             onStateChange(AICallState.AI_CALL)
+                            startAudioRecording()
+                        } else {
+                            stopAudioRecording()
                         }
                     }
                 }
@@ -119,15 +156,51 @@ class AICallManager(
 
                 openAIClient?.connect(instructions)
 
-                // Start recording and streaming audio
-                audioManager = AudioStreamManager(context)
-                audioManager?.startRecording { audioData ->
-                    openAIClient?.sendAudio(audioData)
-                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing AI client", e)
                 onError("Failed to initialize AI: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Start audio recording
+     */
+    private fun startAudioRecording() {
+        try {
+            if (!hasAudioPermission()) {
+                Log.e(TAG, "Cannot start recording: no audio permission")
+                onError("Microphone permission required")
+                return
+            }
+
+            if (isRecording) {
+                Log.w(TAG, "Already recording")
+                return
+            }
+
+            audioManager = AudioStreamManager(context)
+            audioManager?.startRecording { audioData ->
+                openAIClient?.sendAudio(audioData)
+            }
+            isRecording = true
+            Log.d(TAG, "Started audio recording")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting audio recording", e)
+            onError("Failed to start recording: ${e.message}")
+        }
+    }
+
+    /**
+     * Stop audio recording
+     */
+    private fun stopAudioRecording() {
+        try {
+            audioManager?.stopRecording()
+            isRecording = false
+            Log.d(TAG, "Stopped audio recording")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping audio recording", e)
         }
     }
 
@@ -137,6 +210,12 @@ class AICallManager(
     fun handCallToAI(callerNumber: String, callerName: String?) {
         try {
             Log.d(TAG, "Handing call to AI")
+
+            if (!hasAudioPermission()) {
+                onError("Microphone permission required for AI features")
+                return
+            }
+
             onStateChange(AICallState.AI_TAKEOVER)
 
             coroutineScope.launch {
@@ -145,6 +224,10 @@ class AICallManager(
                     Speaker.AI,
                     "Hello, I'm taking over this call. How can I assist you?"
                 )
+
+                if (!SIMULATION_MODE) {
+                    startAudioRecording()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error handing call to AI", e)
@@ -162,7 +245,9 @@ class AICallManager(
 
             coroutineScope.launch {
                 delay(1500)
-                // Message composed - this would be shown in UI
+                // Simulate message composition
+                val message = "Sorry I missed your call. I'll get back to you soon!"
+                // This would be shown in UI via viewModel
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error composing AI message", e)
@@ -176,6 +261,7 @@ class AICallManager(
     fun takeBackCall() {
         try {
             Log.d(TAG, "Taking back call from AI")
+            stopAudioRecording()
             onStateChange(AICallState.ACTIVE)
             addToTranscript(
                 Speaker.USER,
@@ -192,7 +278,11 @@ class AICallManager(
      */
     fun setMuted(muted: Boolean) {
         isMuted = muted
-        audioManager?.setMuted(muted)
+        if (muted && isRecording) {
+            audioManager?.stopRecording()
+        } else if (!muted && !isRecording && openAIClient?.isConnected() == true) {
+            startAudioRecording()
+        }
     }
 
     /**
@@ -228,6 +318,7 @@ class AICallManager(
     fun endCall() {
         try {
             Log.d(TAG, "Ending call")
+            stopAudioRecording()
             onStateChange(AICallState.ENDED)
             cleanup()
         } catch (e: Exception) {
@@ -240,9 +331,13 @@ class AICallManager(
      * Add item to transcript
      */
     private fun addToTranscript(speaker: Speaker, text: String) {
-        val item = TranscriptItem.create(speaker, text)
-        transcript.add(item)
-        onTranscriptUpdate(transcript.toList())
+        try {
+            val item = TranscriptItem.create(speaker, text)
+            transcript.add(item)
+            onTranscriptUpdate(transcript.toList())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding to transcript", e)
+        }
     }
 
     /**
@@ -250,10 +345,15 @@ class AICallManager(
      */
     fun cleanup() {
         Log.d(TAG, "Cleaning up AICallManager")
-        audioManager?.cleanup()
-        audioManager = null
-        openAIClient?.disconnect()
-        openAIClient = null
-        coroutineScope.cancel()
+        try {
+            stopAudioRecording()
+            audioManager?.cleanup()
+            audioManager = null
+            openAIClient?.disconnect()
+            openAIClient = null
+            coroutineScope.cancel()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during cleanup", e)
+        }
     }
 }

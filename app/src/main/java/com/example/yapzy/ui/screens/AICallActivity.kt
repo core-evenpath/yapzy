@@ -1,13 +1,18 @@
 package com.example.yapzy.ui.screens
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -34,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.yapzy.ai.*
 import com.example.yapzy.phone.CallManager
 import com.example.yapzy.ui.theme.YapzyTheme
@@ -46,8 +52,10 @@ class AICallActivity : ComponentActivity() {
     private val viewModel: AICallViewModel by viewModels()
     private var aiCallManager: AICallManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var isCallAnswered = false
 
     companion object {
+        private const val TAG = "AICallActivity"
         const val EXTRA_PHONE_NUMBER = "phone_number"
         const val EXTRA_CALLER_NAME = "caller_name"
         const val EXTRA_CALLER_TYPE = "caller_type"
@@ -71,8 +79,26 @@ class AICallActivity : ComponentActivity() {
         }
     }
 
+    // Permission launcher
+    private val audioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.d(TAG, "Audio permission granted, starting AI call")
+            startAICallWithPermission()
+        } else {
+            Log.e(TAG, "Audio permission denied")
+            viewModel.setError("Microphone permission is required for AI calls")
+            Toast.makeText(this, "Microphone permission required for AI features", Toast.LENGTH_LONG).show()
+            // Fall back to regular call
+            CallManager.answerCall()
+            viewModel.setCallState(AICallState.ACTIVE)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate called")
 
         setupWindowFlags()
 
@@ -92,16 +118,24 @@ class AICallActivity : ComponentActivity() {
             type = callerType
         ))
 
+        // Initialize AICallManager
         aiCallManager = AICallManager(
             context = this,
             onTranscriptUpdate = { transcript ->
-                viewModel.setTranscript(transcript)
+                runOnUiThread {
+                    viewModel.setTranscript(transcript)
+                }
             },
             onStateChange = { state ->
-                viewModel.setCallState(state)
+                runOnUiThread {
+                    viewModel.setCallState(state)
+                }
             },
             onError = { error ->
-                viewModel.setError(error)
+                runOnUiThread {
+                    Log.e(TAG, "AICallManager error: $error")
+                    viewModel.setError(error)
+                }
             }
         )
 
@@ -110,7 +144,19 @@ class AICallActivity : ComponentActivity() {
                 AICallScreen(
                     viewModel = viewModel,
                     aiCallManager = aiCallManager!!,
-                    onDismiss = { finish() }
+                    onDismiss = { finish() },
+                    onAnswerRegular = {
+                        answerCallRegularly()
+                    },
+                    onAnswerWithAI = {
+                        answerCallWithAI()
+                    },
+                    onDeclineCall = {
+                        declineCall()
+                    },
+                    onSendAIMessage = {
+                        sendAIMessage()
+                    }
                 )
             }
         }
@@ -139,11 +185,125 @@ class AICallActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    private fun answerCallRegularly() {
+        Log.d(TAG, "Answering call regularly")
+        try {
+            CallManager.answerCall()
+            isCallAnswered = true
+            viewModel.setCallState(AICallState.ACTIVE)
+
+            // Start InCallActivity for regular call handling
+            val intent = Intent(this, InCallActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(intent)
+            finish()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error answering call regularly", e)
+            viewModel.setError("Failed to answer call: ${e.message}")
+        }
+    }
+
+    private fun answerCallWithAI() {
+        Log.d(TAG, "Answering call with AI")
+
+        // First, answer the call
+        try {
+            CallManager.answerCall()
+            isCallAnswered = true
+            viewModel.setCallState(AICallState.CONNECTING)
+
+            // Then check for audio permission
+            if (checkAudioPermission()) {
+                startAICallWithPermission()
+            } else {
+                requestAudioPermission()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error answering call with AI", e)
+            viewModel.setError("Failed to answer call: ${e.message}")
+            // Fall back to regular call
+            viewModel.setCallState(AICallState.ACTIVE)
+        }
+    }
+
+    private fun declineCall() {
+        Log.d(TAG, "Declining call")
+        try {
+            CallManager.rejectCall()
+            viewModel.setCallState(AICallState.DECLINED)
+            finish()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error declining call", e)
+            viewModel.setError("Failed to decline call: ${e.message}")
+            finish()
+        }
+    }
+
+    private fun sendAIMessage() {
+        Log.d(TAG, "Sending AI message")
+        try {
+            CallManager.rejectCall()
+            viewModel.setCallState(AICallState.AI_MESSAGE)
+
+            val callerInfo = viewModel.callerInfo.value
+            callerInfo?.let { info ->
+                aiCallManager?.composeAIMessage(info.number, info.name)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending AI message", e)
+            viewModel.setError("Failed to compose message: ${e.message}")
+        }
+    }
+
+    private fun checkAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestAudioPermission() {
+        Log.d(TAG, "Requesting audio permission")
+        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    private fun startAICallWithPermission() {
+        Log.d(TAG, "Starting AI call with permission")
+        val callerInfo = viewModel.callerInfo.value
+
+        if (callerInfo == null) {
+            Log.e(TAG, "Caller info is null")
+            viewModel.setError("Unable to start AI call: caller information missing")
+            return
+        }
+
+        try {
+            aiCallManager?.startAICall(callerInfo.number, callerInfo.name)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting AI call", e)
+            viewModel.setError("Failed to start AI: ${e.message}")
+            // Fall back to regular active call
+            viewModel.setCallState(AICallState.ACTIVE)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        aiCallManager?.cleanup()
+        Log.d(TAG, "onDestroy called")
+
+        try {
+            aiCallManager?.cleanup()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up AI call manager", e)
+        }
+
         wakeLock?.let {
-            if (it.isHeld) it.release()
+            try {
+                if (it.isHeld) it.release()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error releasing wake lock", e)
+            }
         }
     }
 }
@@ -152,7 +312,11 @@ class AICallActivity : ComponentActivity() {
 fun AICallScreen(
     viewModel: AICallViewModel,
     aiCallManager: AICallManager,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAnswerRegular: () -> Unit,
+    onAnswerWithAI: () -> Unit,
+    onDeclineCall: () -> Unit,
+    onSendAIMessage: () -> Unit
 ) {
     val callState by viewModel.callState.collectAsState()
     val transcript by viewModel.transcript.collectAsState()
@@ -175,7 +339,7 @@ fun AICallScreen(
 
     errorMessage?.let { error ->
         LaunchedEffect(error) {
-            delay(3000)
+            delay(5000)
             viewModel.clearError()
         }
     }
@@ -188,27 +352,10 @@ fun AICallScreen(
         when (callState) {
             AICallState.INCOMING -> IncomingCallScreen(
                 callerInfo = callerInfo,
-                onAnswer = {
-                    CallManager.answerCall()
-                    viewModel.setCallState(AICallState.ACTIVE)
-                },
-                onDecline = {
-                    CallManager.rejectCall()
-                    viewModel.setCallState(AICallState.DECLINED)
-                    onDismiss()
-                },
-                onAICall = {
-                    CallManager.answerCall()
-                    callerInfo?.let { info ->
-                        aiCallManager.startAICall(info.number, info.name)
-                    }
-                },
-                onAIMessage = {
-                    CallManager.rejectCall()
-                    callerInfo?.let { info ->
-                        aiCallManager.composeAIMessage(info.number, info.name)
-                    }
-                }
+                onAnswer = onAnswerRegular,
+                onDecline = onDeclineCall,
+                onAICall = onAnswerWithAI,
+                onAIMessage = onSendAIMessage
             )
 
             AICallState.ACTIVE -> ActiveCallScreen(
@@ -274,8 +421,6 @@ fun AICallScreen(
                     onDismiss()
                 }
             }
-
-            else -> {}
         }
 
         errorMessage?.let { error ->

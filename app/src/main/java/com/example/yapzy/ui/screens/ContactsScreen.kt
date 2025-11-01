@@ -1,5 +1,6 @@
 package com.example.yapzy.ui.screens
 
+import android.Manifest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.SubcomposeAsyncImage
@@ -30,6 +32,10 @@ import com.example.yapzy.phone.PhoneManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.pm.PackageManager
+import android.util.Log
+
+private const val TAG = "ContactsScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +53,14 @@ fun ContactsScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var contacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
     var showFavoritesOnly by remember { mutableStateOf(false) }
+
+    // Check if we have call permission
+    val hasCallPermission = remember {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     // Load contacts on lifecycle start
     LaunchedEffect(lifecycleOwner, showFavoritesOnly) {
@@ -249,17 +263,21 @@ fun ContactsScreen(
                             items(contactsInGroup, key = { it.id }) { contact ->
                                 ContactItem(
                                     contact = contact,
+                                    hasCallPermission = hasCallPermission,
                                     onCallClick = {
                                         scope.launch {
                                             try {
+                                                Log.d(TAG, "Call button clicked for ${contact.name}")
                                                 phoneManager.makeCall(contact.phoneNumber)
                                             } catch (e: Exception) {
+                                                Log.e(TAG, "Error making call", e)
                                                 errorMessage = "Failed to make call: ${e.message}"
                                             }
                                         }
                                     },
                                     onMessageClick = {
                                         // Navigate to messages - this would need navigation integration
+                                        Log.d(TAG, "Message button clicked for ${contact.name}")
                                     },
                                     onContactClick = {
                                         onContactClick(contact)
@@ -283,19 +301,23 @@ private suspend fun loadContacts(
     onResult: (List<Contact>, String?) -> Unit
 ) = withContext(Dispatchers.IO) {
     try {
+        Log.d(TAG, "Loading contacts (favorites only: $favoritesOnly)")
         val contacts = if (favoritesOnly) {
             contactsManager.getFavoriteContacts()
         } else {
             contactsManager.getAllContacts()
         }
+        Log.d(TAG, "Loaded ${contacts.size} contacts")
         withContext(Dispatchers.Main) {
             onResult(contacts, null)
         }
     } catch (e: SecurityException) {
+        Log.e(TAG, "Security exception loading contacts", e)
         withContext(Dispatchers.Main) {
             onResult(emptyList(), "Permission denied. Please grant contacts permission.")
         }
     } catch (e: Exception) {
+        Log.e(TAG, "Error loading contacts", e)
         withContext(Dispatchers.Main) {
             onResult(emptyList(), "Error loading contacts: ${e.message}")
         }
@@ -305,6 +327,7 @@ private suspend fun loadContacts(
 @Composable
 fun ContactItem(
     contact: Contact,
+    hasCallPermission: Boolean,
     onCallClick: () -> Unit,
     onMessageClick: () -> Unit,
     onContactClick: () -> Unit = {}
@@ -414,7 +437,10 @@ fun ContactItem(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             IconButton(
-                onClick = onMessageClick,
+                onClick = {
+                    Log.d(TAG, "Message icon clicked")
+                    onMessageClick()
+                },
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
@@ -424,13 +450,20 @@ fun ContactItem(
                 )
             }
             IconButton(
-                onClick = onCallClick,
-                modifier = Modifier.size(40.dp)
+                onClick = {
+                    Log.d(TAG, "Call icon clicked for ${contact.name}")
+                    onCallClick()
+                },
+                modifier = Modifier.size(40.dp),
+                enabled = hasCallPermission
             ) {
                 Icon(
                     Icons.Default.Phone,
                     contentDescription = "Call",
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = if (hasCallPermission)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                 )
             }
         }

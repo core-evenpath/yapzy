@@ -1,5 +1,8 @@
 package com.example.yapzy.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,7 +22,11 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.yapzy.phone.PhoneManager
+import kotlinx.coroutines.launch
+
+private const val TAG = "DialpadScreen"
 
 @Composable
 fun DialpadScreen(
@@ -30,6 +37,17 @@ fun DialpadScreen(
     val context = LocalContext.current
     val phoneManager = remember { PhoneManager(context) }
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Check if we have call permission
+    val hasCallPermission = remember {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 
     Column(
         modifier = Modifier
@@ -38,6 +56,44 @@ fun DialpadScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Error message
+        errorMessage?.let { error ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                    IconButton(onClick = { errorMessage = null }) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Dismiss",
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+        }
+
         // Phone number display
         Box(
             modifier = Modifier
@@ -209,6 +265,7 @@ fun DialpadScreen(
                     if (phoneNumber.isNotEmpty()) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         phoneNumber = phoneNumber.dropLast(1)
+                        errorMessage = null
                     }
                 },
                 modifier = Modifier.size(64.dp),
@@ -230,16 +287,26 @@ fun DialpadScreen(
                 onClick = {
                     if (phoneNumber.isNotEmpty()) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        phoneManager.makeCall(phoneNumber)
+                        errorMessage = null
+
+                        scope.launch {
+                            try {
+                                Log.d(TAG, "Call button clicked for: $phoneNumber")
+                                phoneManager.makeCall(phoneNumber)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error making call from dialpad", e)
+                                errorMessage = "Failed to make call: ${e.message}"
+                            }
+                        }
                     }
                 },
                 modifier = Modifier.size(72.dp),
-                containerColor = if (phoneNumber.isNotEmpty())
+                containerColor = if (phoneNumber.isNotEmpty() && hasCallPermission)
                     MaterialTheme.colorScheme.primary
                 else
                     MaterialTheme.colorScheme.surfaceVariant,
                 elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = if (phoneNumber.isNotEmpty()) 6.dp else 0.dp
+                    defaultElevation = if (phoneNumber.isNotEmpty() && hasCallPermission) 6.dp else 0.dp
                 )
             ) {
                 Icon(
