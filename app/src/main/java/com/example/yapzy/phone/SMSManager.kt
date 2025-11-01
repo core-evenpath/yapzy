@@ -87,7 +87,7 @@ class SMSManager(private val context: Context) {
                             id = threadId,
                             contactName = contactName,
                             contactAvatar = initials,
-                            photoUri = contact?.photoUri,
+                            photoUri = contact?.photoUri?.toString(),  // Convert Uri to String
                             messages = listOf(message),
                             lastMessage = message,
                             unreadCount = if (!isRead && !isFromUser) 1 else 0,

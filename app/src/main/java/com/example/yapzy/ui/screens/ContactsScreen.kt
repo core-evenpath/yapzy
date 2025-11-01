@@ -1,6 +1,5 @@
 package com.example.yapzy.ui.screens
 
-import android.Manifest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,21 +8,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.yapzy.phone.Contact
@@ -32,10 +29,6 @@ import com.example.yapzy.phone.PhoneManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.content.pm.PackageManager
-import android.util.Log
-
-private const val TAG = "ContactsScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,104 +36,68 @@ fun ContactsScreen(
     onContactClick: (Contact) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val contactsManager = remember { ContactsManager(context) }
     val phoneManager = remember { PhoneManager(context) }
 
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
     var contacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
-    var showFavoritesOnly by remember { mutableStateOf(false) }
+    var favoriteContacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var selectedTab by remember { mutableStateOf(0) }
 
-    // Check if we have call permission
-    val hasCallPermission = remember {
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CALL_PHONE
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    // Load contacts on lifecycle start
-    LaunchedEffect(lifecycleOwner, showFavoritesOnly) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            loadContacts(contactsManager, showFavoritesOnly) { result, error ->
-                contacts = result
-                errorMessage = error
+    // Load contacts
+    LaunchedEffect(Unit) {
+        scope.launch {
+            try {
+                val loadedContacts = withContext(Dispatchers.IO) {
+                    contactsManager.getAllContacts()
+                }
+                val loadedFavorites = withContext(Dispatchers.IO) {
+                    contactsManager.getFavoriteContacts()
+                }
+                contacts = loadedContacts
+                favoriteContacts = loadedFavorites
+                isLoading = false
+            } catch (e: SecurityException) {
+                errorMessage = "Permission denied. Please grant contacts permission."
+                isLoading = false
+            } catch (e: Exception) {
+                errorMessage = "Error loading contacts: ${e.message}"
                 isLoading = false
             }
         }
     }
 
-    // Filter contacts based on search
-    val filteredContacts = remember(contacts, searchQuery) {
+    val filteredContacts = remember(contacts, searchQuery, selectedTab) {
+        val sourceList = if (selectedTab == 0) contacts else favoriteContacts
         if (searchQuery.isEmpty()) {
-            contacts
+            sourceList
         } else {
-            contacts.filter {
+            sourceList.filter {
                 it.name.contains(searchQuery, ignoreCase = true) ||
                         it.phoneNumber.contains(searchQuery, ignoreCase = true)
             }
         }
     }
 
-    // Group contacts by first letter
-    val groupedContacts = remember(filteredContacts) {
-        filteredContacts.groupBy {
-            it.name.firstOrNull()?.uppercaseChar() ?: '#'
-        }.toSortedMap()
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Contacts",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Contacts") },
                 actions = {
-                    IconButton(onClick = { showFavoritesOnly = !showFavoritesOnly }) {
-                        Icon(
-                            imageVector = if (showFavoritesOnly) Icons.Default.Star else Icons.Default.StarOutline,
-                            contentDescription = "Toggle Favorites",
-                            tint = if (showFavoritesOnly)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurface
-                        )
+                    IconButton(onClick = { /* Add contact */ }) {
+                        Icon(Icons.Default.PersonAdd, "Add Contact")
                     }
-                    IconButton(
-                        onClick = {
-                            isLoading = true
-                            errorMessage = null
-                            scope.launch {
-                                loadContacts(contactsManager, showFavoritesOnly) { result, error ->
-                                    contacts = result
-                                    errorMessage = error
-                                    isLoading = false
-                                }
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Refresh, "Refresh")
+                    IconButton(onClick = { /* More options */ }) {
+                        Icon(Icons.Default.MoreVert, "More")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { /* Add new contact */ },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.PersonAdd, "Add Contact")
-            }
         }
     ) { padding ->
         Column(
@@ -170,12 +127,26 @@ fun ContactsScreen(
                 singleLine = true
             )
 
+            // Tabs
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("All Contacts") }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Favorites") }
+                )
+            }
+
             // Error message
             errorMessage?.let { error ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     )
@@ -199,6 +170,7 @@ fun ContactsScreen(
                 }
             }
 
+            // Content
             when {
                 isLoading -> {
                     Box(
@@ -228,16 +200,16 @@ fun ContactsScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             Icon(
-                                Icons.Default.Contacts,
+                                Icons.Default.Person,
                                 contentDescription = null,
                                 modifier = Modifier.size(64.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                             Text(
                                 text = if (searchQuery.isEmpty()) {
-                                    if (showFavoritesOnly) "No favorite contacts" else "No contacts"
+                                    if (selectedTab == 1) "No favorite contacts" else "No contacts found"
                                 } else {
-                                    "No contacts found"
+                                    "No contacts match your search"
                                 },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -249,44 +221,73 @@ fun ContactsScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        groupedContacts.forEach { (letter, contactsInGroup) ->
+                        // Show favorites section if on "All" tab and there are favorites
+                        if (selectedTab == 0 && favoriteContacts.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = letter.toString(),
-                                    style = MaterialTheme.typography.titleLarge,
+                                    text = "Favorites",
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                 )
                             }
 
-                            items(contactsInGroup, key = { it.id }) { contact ->
+                            items(favoriteContacts.take(3), key = { it.id }) { contact ->
                                 ContactItem(
                                     contact = contact,
-                                    hasCallPermission = hasCallPermission,
+                                    phoneManager = phoneManager,
+                                    onClick = { onContactClick(contact) },
                                     onCallClick = {
                                         scope.launch {
                                             try {
-                                                Log.d(TAG, "Call button clicked for ${contact.name}")
                                                 phoneManager.makeCall(contact.phoneNumber)
                                             } catch (e: Exception) {
-                                                Log.e(TAG, "Error making call", e)
-                                                errorMessage = "Failed to make call: ${e.message}"
+                                                errorMessage = "Failed to make call"
                                             }
                                         }
-                                    },
-                                    onMessageClick = {
-                                        // Navigate to messages - this would need navigation integration
-                                        Log.d(TAG, "Message button clicked for ${contact.name}")
-                                    },
-                                    onContactClick = {
-                                        onContactClick(contact)
                                     }
                                 )
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                 )
                             }
+
+                            if (favoriteContacts.size > 3) {
+                                item {
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                            }
+
+                            item {
+                                Text(
+                                    text = "All Contacts",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+
+                        items(filteredContacts, key = { it.id }) { contact ->
+                            ContactItem(
+                                contact = contact,
+                                phoneManager = phoneManager,
+                                onClick = { onContactClick(contact) },
+                                onCallClick = {
+                                    scope.launch {
+                                        try {
+                                            phoneManager.makeCall(contact.phoneNumber)
+                                        } catch (e: Exception) {
+                                            errorMessage = "Failed to make call"
+                                        }
+                                    }
+                                }
+                            )
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
                         }
                     }
                 }
@@ -295,54 +296,24 @@ fun ContactsScreen(
     }
 }
 
-private suspend fun loadContacts(
-    contactsManager: ContactsManager,
-    favoritesOnly: Boolean,
-    onResult: (List<Contact>, String?) -> Unit
-) = withContext(Dispatchers.IO) {
-    try {
-        Log.d(TAG, "Loading contacts (favorites only: $favoritesOnly)")
-        val contacts = if (favoritesOnly) {
-            contactsManager.getFavoriteContacts()
-        } else {
-            contactsManager.getAllContacts()
-        }
-        Log.d(TAG, "Loaded ${contacts.size} contacts")
-        withContext(Dispatchers.Main) {
-            onResult(contacts, null)
-        }
-    } catch (e: SecurityException) {
-        Log.e(TAG, "Security exception loading contacts", e)
-        withContext(Dispatchers.Main) {
-            onResult(emptyList(), "Permission denied. Please grant contacts permission.")
-        }
-    } catch (e: Exception) {
-        Log.e(TAG, "Error loading contacts", e)
-        withContext(Dispatchers.Main) {
-            onResult(emptyList(), "Error loading contacts: ${e.message}")
-        }
-    }
-}
-
 @Composable
 fun ContactItem(
     contact: Contact,
-    hasCallPermission: Boolean,
-    onCallClick: () -> Unit,
-    onMessageClick: () -> Unit,
-    onContactClick: () -> Unit = {}
+    phoneManager: PhoneManager,
+    onClick: () -> Unit,
+    onCallClick: () -> Unit
 ) {
     val context = LocalContext.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onContactClick() }
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar - show photo if available, otherwise show initials
+        // Avatar
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -350,8 +321,7 @@ fun ContactItem(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            if (contact.photoUri != null && contact.photoUri.isNotEmpty()) {
-                // Display actual contact photo with proper error handling
+            if (contact.photoUri != null) {
                 SubcomposeAsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(contact.photoUri)
@@ -362,20 +332,7 @@ fun ContactItem(
                         .size(48.dp)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop,
-                    loading = {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    },
                     error = {
-                        // Display initials on error
                         Text(
                             text = contact.name.split(" ")
                                 .mapNotNull { it.firstOrNull() }
@@ -383,13 +340,12 @@ fun ContactItem(
                                 .joinToString("")
                                 .uppercase(),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 )
             } else {
-                // Display initials when no photo URI
                 Text(
                     text = contact.name.split(" ")
                         .mapNotNull { it.firstOrNull() }
@@ -397,75 +353,56 @@ fun ContactItem(
                         .joinToString("")
                         .uppercase(),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        // Contact Info
+        // Contact info
         Column(
             modifier = Modifier.weight(1f)
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = contact.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (contact.isFavorite) {
                     Icon(
                         Icons.Default.Star,
                         contentDescription = "Favorite",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
+
             Text(
-                text = contact.phoneNumber,
+                text = phoneManager.formatPhoneNumberForDisplay(contact.phoneNumber),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
 
-        // Action Buttons
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Call button
+        IconButton(
+            onClick = onCallClick,
+            modifier = Modifier.size(40.dp)
         ) {
-            IconButton(
-                onClick = {
-                    Log.d(TAG, "Message icon clicked")
-                    onMessageClick()
-                },
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Message,
-                    contentDescription = "Message",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            IconButton(
-                onClick = {
-                    Log.d(TAG, "Call icon clicked for ${contact.name}")
-                    onCallClick()
-                },
-                modifier = Modifier.size(40.dp),
-                enabled = hasCallPermission
-            ) {
-                Icon(
-                    Icons.Default.Phone,
-                    contentDescription = "Call",
-                    tint = if (hasCallPermission)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                )
-            }
+            Icon(
+                Icons.Default.Phone,
+                contentDescription = "Call ${contact.name}",
+                tint = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

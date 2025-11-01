@@ -3,6 +3,7 @@ package com.example.yapzy.ui.screens
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -35,6 +36,7 @@ import java.util.*
 class PostCallActivity : ComponentActivity() {
 
     companion object {
+        private const val TAG = "PostCallActivity"
         const val EXTRA_PHONE_NUMBER = "phone_number"
         const val EXTRA_CALL_DURATION = "call_duration"
         const val EXTRA_CALL_TYPE = "call_type"
@@ -57,47 +59,65 @@ class PostCallActivity : ComponentActivity() {
         }
     }
 
+    // Activity-level managers
+    private lateinit var contactsManager: ContactsManager
+    private lateinit var phoneManager: PhoneManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate")
 
-        val phoneNumber = intent.getStringExtra(EXTRA_PHONE_NUMBER) ?: ""
-        val duration = intent.getIntExtra(EXTRA_CALL_DURATION, 0)
-        val callType = intent.getStringExtra(EXTRA_CALL_TYPE) ?: "outgoing"
-        val timestamp = intent.getLongExtra(EXTRA_CALL_TIMESTAMP, System.currentTimeMillis())
+        try {
+            // Initialize managers at activity level
+            contactsManager = ContactsManager(this)
+            phoneManager = PhoneManager(this)
 
-        setContent {
-            YapzyTheme {
-                PostCallScreen(
-                    phoneNumber = phoneNumber,
-                    duration = duration,
-                    callType = callType,
-                    timestamp = timestamp,
-                    onDismiss = { finish() },
-                    onViewProfile = {
-                        // Get contact info
-                        val contactsManager = ContactsManager(this)
-                        val contact = contactsManager.getContactByNumber(phoneNumber)
+            val phoneNumber = intent.getStringExtra(EXTRA_PHONE_NUMBER) ?: ""
+            val duration = intent.getIntExtra(EXTRA_CALL_DURATION, 0)
+            val callType = intent.getStringExtra(EXTRA_CALL_TYPE) ?: "outgoing"
+            val timestamp = intent.getLongExtra(EXTRA_CALL_TIMESTAMP, System.currentTimeMillis())
 
-                        // Create contact object (real or temporary)
-                        val contactToShow = contact ?: Contact(
-                            id = phoneNumber,
-                            name = phoneNumber,
-                            phoneNumber = phoneNumber,
-                            isFavorite = false
-                        )
-
-                        // Navigate directly to ContactDetailsScreen
-                        val intent = Intent(this, ContactDetailsActivity::class.java).apply {
-                            val gson = Gson()
-                            val contactJson = gson.toJson(contactToShow)
-                            putExtra("contact_json", contactJson)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            setContent {
+                YapzyTheme {
+                    PostCallScreen(
+                        phoneNumber = phoneNumber,
+                        duration = duration,
+                        callType = callType,
+                        timestamp = timestamp,
+                        contactsManager = contactsManager,
+                        phoneManager = phoneManager,
+                        onDismiss = { finish() },
+                        onViewProfile = { contact ->
+                            viewContactProfile(contact, phoneNumber)
                         }
-                        startActivity(intent)
-                        finish()
-                    }
-                )
+                    )
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onCreate", e)
+            finish()
+        }
+    }
+
+    private fun viewContactProfile(contact: Contact?, phoneNumber: String) {
+        try {
+            val contactToShow = contact ?: Contact(
+                id = phoneNumber,
+                name = phoneNumber,
+                phoneNumber = phoneNumber,
+                isFavorite = false
+            )
+
+            val intent = Intent(this, ContactDetailsActivity::class.java).apply {
+                val gson = Gson()
+                val contactJson = gson.toJson(contactToShow)
+                putExtra("contact_json", contactJson)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+            finish()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error viewing contact profile", e)
         }
     }
 }
@@ -109,15 +129,23 @@ fun PostCallScreen(
     duration: Int,
     callType: String,
     timestamp: Long,
+    contactsManager: ContactsManager,
+    phoneManager: PhoneManager,
     onDismiss: () -> Unit,
-    onViewProfile: () -> Unit
+    onViewProfile: (Contact?) -> Unit
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val contactsManager = remember { ContactsManager(context) }
-    val phoneManager = remember { PhoneManager(context) }
 
-    val contact = remember { contactsManager.getContactByNumber(phoneNumber) }
+    // Load contact once
+    val contact = remember(phoneNumber) {
+        try {
+            contactsManager.getContactByNumber(phoneNumber)
+        } catch (e: Exception) {
+            Log.e("PostCallScreen", "Error loading contact", e)
+            null
+        }
+    }
+
     val displayName = contact?.name ?: phoneNumber
     val initials = if (contact != null) {
         contact.name.split(" ")
@@ -250,7 +278,7 @@ fun PostCallScreen(
 
                     // View Profile Button
                     Button(
-                        onClick = onViewProfile,
+                        onClick = { onViewProfile(contact) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
@@ -306,6 +334,7 @@ fun PostCallScreen(
                                         phoneManager.makeCall(phoneNumber)
                                         onDismiss()
                                     } catch (e: Exception) {
+                                        Log.e("PostCallScreen", "Error making call", e)
                                         errorMessage = "Failed to make call"
                                     }
                                 }

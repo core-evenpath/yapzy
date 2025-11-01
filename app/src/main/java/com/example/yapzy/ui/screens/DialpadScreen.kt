@@ -35,18 +35,30 @@ fun DialpadScreen(
 ) {
     var phoneNumber by remember { mutableStateOf(initialNumber) }
     val context = LocalContext.current
-    val phoneManager = remember { PhoneManager(context) }
+    var phoneManager by remember { mutableStateOf<PhoneManager?>(null) }
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Check if we have call permission
-    val hasCallPermission = remember {
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CALL_PHONE
-        ) == PackageManager.PERMISSION_GRANTED
+    // Properly manage PhoneManager lifecycle
+    DisposableEffect(context) {
+        val manager = PhoneManager(context)
+        phoneManager = manager
+
+        onDispose {
+            phoneManager = null
+        }
+    }
+
+    // Check if we have call permission - make it reactive
+    val hasCallPermission by remember {
+        derivedStateOf {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CALL_PHONE
+            ) == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     Column(
@@ -285,14 +297,15 @@ fun DialpadScreen(
             // Call button
             FloatingActionButton(
                 onClick = {
-                    if (phoneNumber.isNotEmpty()) {
+                    if (phoneNumber.isNotEmpty() && phoneManager != null) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         errorMessage = null
 
                         scope.launch {
                             try {
-                                Log.d(TAG, "Call button clicked for: $phoneNumber")
-                                phoneManager.makeCall(phoneNumber)
+                                Log.d(TAG, "Initiating call to: $phoneNumber")
+                                // PhoneManager.makeCall will handle launching InCallActivity
+                                phoneManager?.makeCall(phoneNumber)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error making call from dialpad", e)
                                 errorMessage = "Failed to make call: ${e.message}"

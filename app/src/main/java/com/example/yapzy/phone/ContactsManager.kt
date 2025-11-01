@@ -1,106 +1,39 @@
 package com.example.yapzy.phone
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.database.Cursor
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
 import android.util.Log
-import androidx.core.content.ContextCompat
-import java.io.InputStream
 
-/**
- * Data class representing a contact
- */
 data class Contact(
     val id: String,
     val name: String,
     val phoneNumber: String,
-    val isFavorite: Boolean = false,
-    val photoUri: String? = null
+    val photoUri: Uri? = null,
+    val isFavorite: Boolean = false
 )
 
-/**
- * Manager class for handling contacts operations
- */
 class ContactsManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ContactsManager"
     }
 
-    /**
-     * Check if the app has permission to read contacts
-     */
-    fun hasContactsPermission(): Boolean {
-        return try {
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_CONTACTS
-            ) == PackageManager.PERMISSION_GRANTED
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking contacts permission", e)
-            false
-        }
-    }
-
-    /**
-     * Load contact photo as Bitmap
-     */
-    fun loadContactPhoto(photoUri: String?): Bitmap? {
-        if (photoUri == null) return null
-
-        return try {
-            val uri = Uri.parse(photoUri)
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            inputStream?.use {
-                BitmapFactory.decodeStream(it)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading contact photo", e)
-            null
-        }
-    }
-
-    /**
-     * Get a contact by phone number
-     */
-    fun getContactByNumber(phoneNumber: String?): Contact? {
-        if (phoneNumber == null || phoneNumber.isEmpty()) {
-            return null
-        }
-
-        if (!hasContactsPermission()) {
-            Log.w(TAG, "No contacts permission")
-            return null
-        }
-
-        val cleanedNumber = try {
-            phoneNumber.replace(Regex("[\\s\\-()\\+]"), "")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cleaning phone number", e)
-            phoneNumber
-        }
-
-        if (cleanedNumber.isEmpty()) {
-            return null
-        }
-
-        var cursor: Cursor? = null
+    fun getContactByNumber(phoneNumber: String): Contact? {
         try {
-            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-            val projection = arrayOf(
-                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.STARRED,
-                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber)
             )
 
-            cursor = context.contentResolver.query(
+            val projection = arrayOf(
+                ContactsContract.PhoneLookup._ID,
+                ContactsContract.PhoneLookup.DISPLAY_NAME,
+                ContactsContract.PhoneLookup.PHOTO_URI
+            )
+
+            val cursor: Cursor? = context.contentResolver.query(
                 uri,
                 projection,
                 null,
@@ -108,80 +41,35 @@ class ContactsManager(private val context: Context) {
                 null
             )
 
-            if (cursor == null) {
-                Log.w(TAG, "Cursor is null")
-                return null
-            }
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val idIndex = it.getColumnIndex(ContactsContract.PhoneLookup._ID)
+                    val nameIndex = it.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                    val photoIndex = it.getColumnIndex(ContactsContract.PhoneLookup.PHOTO_URI)
 
-            val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
-            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            val starredIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.STARRED)
-            val photoUriIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
+                    val id = if (idIndex >= 0) it.getString(idIndex) else phoneNumber
+                    val name = if (nameIndex >= 0) it.getString(nameIndex) else phoneNumber
+                    val photoUriString = if (photoIndex >= 0) it.getString(photoIndex) else null
+                    val photoUri = photoUriString?.let { uriStr -> Uri.parse(uriStr) }
 
-            if (idIndex < 0 || nameIndex < 0 || numberIndex < 0 || starredIndex < 0) {
-                Log.w(TAG, "Invalid column indices")
-                return null
-            }
-
-            while (cursor.moveToNext()) {
-                try {
-                    val number = cursor.getString(numberIndex)
-                    if (number == null) continue
-
-                    val numberCleaned = number.replace(Regex("[\\s\\-()\\+]"), "")
-
-                    // Check if the numbers match (comparing last 10 digits for flexibility)
-                    if (numberCleaned.isNotEmpty() && cleanedNumber.isNotEmpty()) {
-                        val minLength = minOf(10, minOf(numberCleaned.length, cleanedNumber.length))
-                        if (numberCleaned.takeLast(minLength) == cleanedNumber.takeLast(minLength)) {
-                            val id = cursor.getString(idIndex) ?: continue
-                            val name = cursor.getString(nameIndex) ?: "Unknown"
-                            val starred = try {
-                                cursor.getInt(starredIndex) == 1
-                            } catch (e: Exception) {
-                                false
-                            }
-                            val photoUri = if (photoUriIndex >= 0) {
-                                cursor.getString(photoUriIndex)
-                            } else {
-                                null
-                            }
-
-                            return Contact(
-                                id = id,
-                                name = name,
-                                phoneNumber = phoneNumber,
-                                isFavorite = starred,
-                                photoUri = photoUri
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing contact row", e)
-                    continue
+                    return Contact(
+                        id = id,
+                        name = name,
+                        phoneNumber = phoneNumber,
+                        photoUri = photoUri,
+                        isFavorite = false
+                    )
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting contact by number", e)
-        } finally {
-            cursor?.close()
+            Log.e(TAG, "Error getting contact by number: $phoneNumber", e)
         }
 
         return null
     }
 
-    /**
-     * Get all contacts from the device
-     */
     fun getAllContacts(): List<Contact> {
-        if (!hasContactsPermission()) {
-            Log.w(TAG, "No contacts permission")
-            return emptyList()
-        }
-
-        val contactsMap = mutableMapOf<String, Contact>()
-        var cursor: Cursor? = null
+        val contacts = mutableListOf<Contact>()
 
         try {
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
@@ -189,87 +77,52 @@ class ContactsManager(private val context: Context) {
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.STARRED,
                 ContactsContract.CommonDataKinds.Phone.PHOTO_URI
             )
 
-            cursor = context.contentResolver.query(
+            val cursor: Cursor? = context.contentResolver.query(
                 uri,
                 projection,
                 null,
                 null,
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
             )
 
-            if (cursor == null) {
-                Log.w(TAG, "Cursor is null")
-                return emptyList()
-            }
+            cursor?.use {
+                val idIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val photoIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
-            val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
-            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            val starredIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.STARRED)
-            val photoUriIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
+                while (it.moveToNext()) {
+                    val id = if (idIndex >= 0) it.getString(idIndex) else ""
+                    val name = if (nameIndex >= 0) it.getString(nameIndex) else "Unknown"
+                    val number = if (numberIndex >= 0) it.getString(numberIndex) else ""
+                    val photoUriString = if (photoIndex >= 0) it.getString(photoIndex) else null
+                    val photoUri = photoUriString?.let { uriStr -> Uri.parse(uriStr) }
 
-            if (idIndex < 0 || nameIndex < 0 || numberIndex < 0 || starredIndex < 0) {
-                Log.w(TAG, "Invalid column indices")
-                return emptyList()
-            }
-
-            while (cursor.moveToNext()) {
-                try {
-                    val id = cursor.getString(idIndex) ?: continue
-                    val name = cursor.getString(nameIndex) ?: "Unknown"
-                    val number = cursor.getString(numberIndex) ?: ""
-                    val starred = try {
-                        cursor.getInt(starredIndex) == 1
-                    } catch (e: Exception) {
-                        false
-                    }
-                    val photoUri = if (photoUriIndex >= 0) {
-                        cursor.getString(photoUriIndex)
-                    } else {
-                        null
-                    }
-
-                    // Avoid duplicates - keep only one number per contact
-                    if (!contactsMap.containsKey(id) && number.isNotEmpty()) {
-                        contactsMap[id] = Contact(
-                            id = id,
-                            name = name,
-                            phoneNumber = number,
-                            isFavorite = starred,
-                            photoUri = photoUri
+                    if (number.isNotEmpty()) {
+                        contacts.add(
+                            Contact(
+                                id = id,
+                                name = name,
+                                phoneNumber = number,
+                                photoUri = photoUri,
+                                isFavorite = false
+                            )
                         )
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing contact row", e)
-                    continue
                 }
             }
-
-            Log.d(TAG, "Retrieved ${contactsMap.size} contacts")
         } catch (e: Exception) {
             Log.e(TAG, "Error getting all contacts", e)
-        } finally {
-            cursor?.close()
         }
 
-        return contactsMap.values.toList()
+        return contacts
     }
 
-    /**
-     * Get favorite/starred contacts
-     */
     fun getFavoriteContacts(): List<Contact> {
-        if (!hasContactsPermission()) {
-            Log.w(TAG, "No contacts permission")
-            return emptyList()
-        }
-
-        val contactsMap = mutableMapOf<String, Contact>()
-        var cursor: Cursor? = null
+        val contacts = mutableListOf<Contact>()
 
         try {
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
@@ -277,94 +130,51 @@ class ContactsManager(private val context: Context) {
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.STARRED,
-                ContactsContract.CommonDataKinds.Phone.PHOTO_URI
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI,
+                ContactsContract.CommonDataKinds.Phone.STARRED
             )
 
             val selection = "${ContactsContract.CommonDataKinds.Phone.STARRED} = ?"
             val selectionArgs = arrayOf("1")
 
-            cursor = context.contentResolver.query(
+            val cursor: Cursor? = context.contentResolver.query(
                 uri,
                 projection,
                 selection,
                 selectionArgs,
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
             )
 
-            if (cursor == null) {
-                Log.w(TAG, "Cursor is null")
-                return emptyList()
-            }
+            cursor?.use {
+                val idIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val photoIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
 
-            val idIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
-            val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            val photoUriIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.PHOTO_URI)
+                while (it.moveToNext()) {
+                    val id = if (idIndex >= 0) it.getString(idIndex) else ""
+                    val name = if (nameIndex >= 0) it.getString(nameIndex) else "Unknown"
+                    val number = if (numberIndex >= 0) it.getString(numberIndex) else ""
+                    val photoUriString = if (photoIndex >= 0) it.getString(photoIndex) else null
+                    val photoUri = photoUriString?.let { uriStr -> Uri.parse(uriStr) }
 
-            if (idIndex < 0 || nameIndex < 0 || numberIndex < 0) {
-                Log.w(TAG, "Invalid column indices")
-                return emptyList()
-            }
-
-            while (cursor.moveToNext()) {
-                try {
-                    val id = cursor.getString(idIndex) ?: continue
-                    val name = cursor.getString(nameIndex) ?: "Unknown"
-                    val number = cursor.getString(numberIndex) ?: ""
-                    val photoUri = if (photoUriIndex >= 0) {
-                        cursor.getString(photoUriIndex)
-                    } else {
-                        null
-                    }
-
-                    // Avoid duplicates
-                    if (!contactsMap.containsKey(id) && number.isNotEmpty()) {
-                        contactsMap[id] = Contact(
-                            id = id,
-                            name = name,
-                            phoneNumber = number,
-                            isFavorite = true,
-                            photoUri = photoUri
+                    if (number.isNotEmpty()) {
+                        contacts.add(
+                            Contact(
+                                id = id,
+                                name = name,
+                                phoneNumber = number,
+                                photoUri = photoUri,
+                                isFavorite = true
+                            )
                         )
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error processing favorite contact row", e)
-                    continue
                 }
             }
-
-            Log.d(TAG, "Retrieved ${contactsMap.size} favorite contacts")
         } catch (e: Exception) {
             Log.e(TAG, "Error getting favorite contacts", e)
-        } finally {
-            cursor?.close()
         }
 
-        return contactsMap.values.toList()
-    }
-
-    /**
-     * Search contacts by name or phone number
-     */
-    fun searchContacts(query: String): List<Contact> {
-        if (query.isEmpty()) {
-            return emptyList()
-        }
-
-        if (!hasContactsPermission()) {
-            Log.w(TAG, "No contacts permission")
-            return emptyList()
-        }
-
-        return try {
-            getAllContacts().filter { contact ->
-                contact.name.contains(query, ignoreCase = true) ||
-                        contact.phoneNumber.contains(query, ignoreCase = true)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error searching contacts", e)
-            emptyList()
-        }
+        return contacts
     }
 }
